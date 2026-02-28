@@ -1,0 +1,14 @@
+node_modules/
+dist/
+build/
+.svelte-kit/
+target/
+.DS_Store
+*.swp
+*.swo
+.env
+.env.*
+!.env.example
+src-tauri/gen/
+.claude/settings.local.json
+.worktrees/
