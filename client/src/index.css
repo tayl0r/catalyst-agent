@@ -1,0 +1,29 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Custom scrollbar */
+::-webkit-scrollbar {
+  width: 6px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: #374151;
+  border-radius: 3px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #4b5563;
+}
+
+/* Code blocks */
+pre {
+  @apply rounded-lg bg-gray-900 p-4 overflow-x-auto text-sm;
+}
+code {
+  @apply font-mono text-sm;
+}
+p code {
+  @apply bg-gray-800 px-1.5 py-0.5 rounded text-gray-200;
+}
