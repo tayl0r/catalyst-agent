@@ -20,8 +20,12 @@ export default function useWebSocket() {
   }, []);
 
   const connect = useCallback(() => {
-    if (wsRef.current?.readyState === WebSocket.OPEN) return;
+    if (
+      wsRef.current?.readyState === WebSocket.OPEN ||
+      wsRef.current?.readyState === WebSocket.CONNECTING
+    ) return;
 
+    setStatus("connecting");
     const ws = new WebSocket(getWsUrl());
     wsRef.current = ws;
 
@@ -139,10 +143,17 @@ export default function useWebSocket() {
     };
   }, [connect]);
 
+  const isProcessingRef = useRef(false);
+
+  // Keep ref in sync with state
+  useEffect(() => {
+    isProcessingRef.current = isProcessing;
+  }, [isProcessing]);
+
   const sendPrompt = useCallback(
     (text) => {
       if (!wsRef.current || wsRef.current.readyState !== WebSocket.OPEN) return;
-      if (isProcessing) return;
+      if (isProcessingRef.current) return;
 
       streamingTextRef.current = "";
       setIsProcessing(true);
@@ -153,7 +164,7 @@ export default function useWebSocket() {
       ]);
       wsRef.current.send(JSON.stringify({ type: "prompt", text }));
     },
-    [isProcessing]
+    []
   );
 
   const killProcess = useCallback(() => {
@@ -162,6 +173,14 @@ export default function useWebSocket() {
   }, []);
 
   const clearMessages = useCallback(() => {
+    if (isProcessingRef.current) {
+      // Kill server-side process before clearing
+      if (wsRef.current?.readyState === WebSocket.OPEN) {
+        wsRef.current.send(JSON.stringify({ type: "kill" }));
+      }
+      setIsProcessing(false);
+      streamingTextRef.current = "";
+    }
     setMessages([]);
   }, []);
 

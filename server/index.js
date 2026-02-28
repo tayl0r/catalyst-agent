@@ -32,7 +32,13 @@ wss.on("connection", (ws) => {
   function killProcess() {
     if (!activeProcess) return;
     const proc = activeProcess;
-    proc.kill("SIGTERM");
+    activeProcess = null; // prevent double-kill orphaning timeouts
+    try {
+      proc.kill("SIGTERM");
+    } catch (_) {
+      // process already exited
+      return;
+    }
     killTimeout = setTimeout(() => {
       try {
         proc.kill("SIGKILL");
@@ -69,6 +75,11 @@ wss.on("connection", (ws) => {
       return;
     }
 
+    if (typeof msg.text !== "string" || msg.text.length > 1_000_000) {
+      send({ type: "error", data: "Prompt too large (max 1MB)" });
+      return;
+    }
+
     if (activeProcess) {
       send({ type: "error", data: "A process is already running" });
       return;
@@ -95,6 +106,7 @@ wss.on("connection", (ws) => {
     activeProcess = child;
 
     // Write prompt via stdin to avoid ARG_MAX limits
+    child.stdin.on("error", () => { /* ignore EPIPE */ });
     child.stdin.write(msg.text);
     child.stdin.end();
 
