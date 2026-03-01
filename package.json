@@ -8,7 +8,8 @@
     "dev": "concurrently -n server,client -c blue,green \"npm run dev --prefix server\" \"npm run dev --prefix client\"",
     "dev:server": "npm run dev --prefix server",
     "dev:client": "npm run dev --prefix client",
-    "typecheck": "npm run typecheck --prefix server && npm run typecheck --prefix client"
+    "typecheck": "npm run typecheck --prefix server && npm run typecheck --prefix client",
+    "prepare": "sh scripts/install-hooks.sh"
   },
   "devDependencies": {
     "concurrently": "^9.1.2"
