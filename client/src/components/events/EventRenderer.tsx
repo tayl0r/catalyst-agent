@@ -1,3 +1,4 @@
+import AskUserQuestionBlock from "./AskUserQuestionBlock";
 import ResultSummary from "./ResultSummary";
 import TextBlock from "./TextBlock";
 import ThinkingBlock from "./ThinkingBlock";
@@ -6,6 +7,7 @@ import ToolUseBlock from "./ToolUseBlock";
 
 interface EventRendererProps {
   events: Record<string, unknown>[];
+  onSend?: (text: string) => void;
 }
 
 interface ContentBlock {
@@ -13,7 +15,7 @@ interface ContentBlock {
   [key: string]: unknown;
 }
 
-export default function EventRenderer({ events }: EventRendererProps) {
+export default function EventRenderer({ events, onSend }: EventRendererProps) {
   const elements: React.ReactNode[] = [];
 
   for (let i = 0; i < events.length; i++) {
@@ -32,6 +34,23 @@ export default function EventRenderer({ events }: EventRendererProps) {
             elements.push(<ThinkingBlock key={key} thinking={block.thinking} />);
           } else if (block.type === "text" && typeof block.text === "string") {
             elements.push(<TextBlock key={key} text={block.text} />);
+          } else if (block.type === "tool_use" && block.name === "AskUserQuestion") {
+            const input = (block.input as Record<string, unknown>) ?? {};
+            const questions = Array.isArray(input.questions) ? input.questions : [];
+            elements.push(
+              <AskUserQuestionBlock
+                key={key}
+                questions={
+                  questions as {
+                    question: string;
+                    header: string;
+                    options: { label: string; description: string }[];
+                    multiSelect: boolean;
+                  }[]
+                }
+                onSend={onSend}
+              />,
+            );
           } else if (block.type === "tool_use" && typeof block.name === "string") {
             elements.push(
               <ToolUseBlock

@@ -84,7 +84,7 @@ export default function ChatPage() {
               </div>
             )}
             {messages.map((msg) => (
-              <ChatMessage key={msg.id} message={msg} />
+              <ChatMessage key={msg.id} message={msg} onSend={sendPrompt} />
             ))}
             <div ref={messagesEndRef} />
           </div>
