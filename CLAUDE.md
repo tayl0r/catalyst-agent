@@ -7,8 +7,8 @@ Browser-based web interface for the Claude CLI with real-time streaming chat.
 ```bash
 npm install          # Install root, server, and client deps (postinstall handles nested installs)
 npm run dev          # Run server + client concurrently
-npm run dev:server   # Server only (port 3001)
-npm run dev:client   # Client only (port 5173)
+npm run dev:server   # Server only (port 2999)
+npm run dev:client   # Client only (port 2998)
 ```
 
 Typecheck: `cd server && npm run typecheck` / `cd client && npm run typecheck`
