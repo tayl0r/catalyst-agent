@@ -12,6 +12,9 @@ try {
   commit = execFileSync("git", ["rev-parse", "--short", "HEAD"]).toString().trim();
 } catch {}
 
+const clientPort = process.env.CATAGENT_CLIENT_PORT || 2998;
+const serverPort = process.env.CATAGENT_SERVER_PORT || 2999;
+
 export default defineConfig({
   define: {
     __APP_VERSION__: JSON.stringify(version),
@@ -24,14 +27,15 @@ export default defineConfig({
     },
   },
   server: {
+    port: Number(clientPort),
     proxy: {
       "/ws": {
-        target: "http://localhost:2999",
+        target: `http://localhost:${serverPort}`,
         ws: true,
         changeOrigin: true,
       },
       "/api": {
-        target: "http://localhost:2999",
+        target: `http://localhost:${serverPort}`,
         changeOrigin: true,
       },
     },

@@ -55,7 +55,7 @@ function stripNullValues(obj: unknown): unknown {
   return obj;
 }
 
-const PORT = process.env.PORT || 3001;
+const PORT = process.env.CATAGENT_SERVER_PORT || 2999;
 const MAX_CONNECTIONS = 10;
 
 const app = express();
