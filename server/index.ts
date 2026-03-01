@@ -16,6 +16,7 @@ import {
   getProjectSlugs,
   createConversation,
   touchConversation,
+  setWorktreeCwd,
   deleteConversation as deleteConv,
   loadMessages,
   appendMessage,
@@ -173,6 +174,8 @@ wss.on("connection", (ws: WebSocket) => {
     ws.close(1013, "Too many connections");
     return;
   }
+
+  console.log(`WS: [connected] clients=${wss.clients.size}`);
 
   let activeProcess: ChildProcess | null = null;
   let killTimeout: ReturnType<typeof setTimeout> | null = null;
@@ -348,10 +351,11 @@ wss.on("connection", (ws: WebSocket) => {
     };
     appendMessage(currentConversationId, userMsg);
 
-    // Resolve project cwd
+    // Resolve cwd: use worktree path when resuming, otherwise project root
     const projectPath = pendingProjectId ? getProjectPath(pendingProjectId) : undefined;
-    if (projectPath && !fs.existsSync(projectPath)) {
-      send({ type: "error", data: `Project directory does not exist: ${projectPath}` });
+    const spawnCwd = (!isFirstPrompt && conv.worktreeCwd) ? conv.worktreeCwd : projectPath;
+    if (spawnCwd && !fs.existsSync(spawnCwd)) {
+      send({ type: "error", data: `Directory does not exist: ${spawnCwd}` });
       return;
     }
 
@@ -366,27 +370,44 @@ wss.on("connection", (ws: WebSocket) => {
       sessionFlag, currentConversationId,
       "-p", "--output-format", "stream-json", "--verbose",
     ];
-    // -w creates a git worktree on the first prompt. On --resume, the CLI
-    // restores session context including the worktree. If that assumption
-    // proves wrong, we'll need to set cwd to the worktree path instead.
+    // -w creates a git worktree on the first prompt. On --resume, we set
+    // cwd to the worktree path stored from the init event.
     if (isFirstPrompt) {
       args.push("-w", conv.slug);
     }
+    args.push("--", parsed.text);
+
+    const project = pendingProjectId ? getProject(pendingProjectId) : null;
+    if (isFirstPrompt) {
+      console.log(`SESSION: [new] project="${project?.name ?? "unknown"}" convo="${conv.name}" session=${currentConversationId}`);
+    }
+    console.log(`USER: ${isFirstPrompt ? "[new session]" : "[resume]"} project="${project?.name ?? "unknown"}" convo="${conv.name}" session=${currentConversationId} text=${JSON.stringify(parsed.text.length > 200 ? parsed.text.slice(0, 200) + "..." : parsed.text)}`);
 
     isFirstPrompt = false;
+
+    const convId = currentConversationId;
+    const logProjectName = project?.name ?? "unknown";
+    const logConvName = conv.name;
 
     const child = spawn("claude", args, {
       stdio: ["pipe", "pipe", "pipe"],
       env,
-      cwd: projectPath || undefined,
+      cwd: spawnCwd || undefined,
     });
 
     activeProcess = child;
+    console.log(`PROCESS: [start] pid=${child.pid} cmd="claude ${args.slice(0, -1).join(" ")}" cwd=${spawnCwd || "none"} project="${logProjectName}" convo="${logConvName}" session=${convId}`);
 
     // Per-prompt streaming context — not shared across prompts.
     // Each spawn gets its own accumulator so conversation switches
     // can't corrupt another prompt's stored text.
     const ctx = { streamingText: "" };
+    const onInitCwd = (cwd: string) => {
+      if (convId) {
+        console.log(`PROCESS: [init] pid=${child.pid} cwd=${cwd} session=${convId}`);
+        setWorktreeCwd(convId, cwd);
+      }
+    };
 
     const { stdin, stdout, stderr } = child;
     if (!stdin || !stdout || !stderr) {
@@ -395,12 +416,10 @@ wss.on("connection", (ws: WebSocket) => {
       return;
     }
 
-    stdin.on("error", () => { /* ignore EPIPE */ });
-    stdin.write(parsed.text);
+    stdin.on("error", () => { /* ignore EPIPE — child may not read stdin */ });
     stdin.end();
 
     let buffer = "";
-    const convId = currentConversationId;
 
     stdout.on("data", (chunk: Buffer) => {
       buffer += chunk.toString();
@@ -421,7 +440,7 @@ wss.on("connection", (ws: WebSocket) => {
 
         // Only send to client if this is still the active process
         const sendFn = activeProcess === child ? send : () => {};
-        handleNdjsonEvent(event as Record<string, unknown>, sendFn, ctx);
+        handleNdjsonEvent(event as Record<string, unknown>, sendFn, ctx, onInitCwd);
       }
     });
 
@@ -432,6 +451,7 @@ wss.on("connection", (ws: WebSocket) => {
     });
 
     child.on("error", (err: Error) => {
+      console.error(`ERROR: project="${logProjectName}" convo="${logConvName}" session=${convId} error=${JSON.stringify(err.message)}`);
       if (activeProcess === child) {
         send({ type: "error", data: err.message });
       }
@@ -439,6 +459,7 @@ wss.on("connection", (ws: WebSocket) => {
     });
 
     child.on("close", (code: number | null) => {
+      console.log(`PROCESS: [exit] pid=${child.pid} exitCode=${code} project="${logProjectName}" convo="${logConvName}" session=${convId}`);
       const isActive = activeProcess === child;
 
       // Only flush buffer and send done if still the active process
@@ -447,7 +468,7 @@ wss.on("connection", (ws: WebSocket) => {
           try {
             const final = JSON.parse(buffer.trim());
             if (typeof final === "object" && final !== null) {
-              handleNdjsonEvent(final as Record<string, unknown>, send, ctx);
+              handleNdjsonEvent(final as Record<string, unknown>, send, ctx, onInitCwd);
             }
           } catch {
             // ignore incomplete final line
@@ -459,7 +480,13 @@ wss.on("connection", (ws: WebSocket) => {
       cleanup(child);
 
       // Always store accumulated text (even from killed processes)
+      if (!ctx.streamingText && isActive) {
+        // Only log no-response for processes that weren't intentionally killed
+        console.log(`AGENT: [no response] project="${logProjectName}" convo="${logConvName}" session=${convId} exitCode=${code}`);
+      }
       if (ctx.streamingText && convId) {
+        const responsePreview = ctx.streamingText.length > 200 ? ctx.streamingText.slice(0, 200) + "..." : ctx.streamingText;
+        console.log(`AGENT: project="${logProjectName}" convo="${logConvName}" session=${convId} text=${JSON.stringify(responsePreview)}`);
         const assistantMsg: UIMessage = {
           id: crypto.randomUUID(),
           type: "assistant",
@@ -474,6 +501,7 @@ wss.on("connection", (ws: WebSocket) => {
   });
 
   ws.on("close", () => {
+    console.log(`WS: [disconnected] clients=${wss.clients.size}`);
     killProcess();
   });
 });
@@ -482,6 +510,7 @@ function handleNdjsonEvent(
   event: Record<string, unknown>,
   sendFn: (obj: ServerMessage) => void,
   ctx: { streamingText: string },
+  onInitCwd?: (cwd: string) => void,
 ): void {
   if (event.type === "content_block_delta") {
     const delta = event.delta;
@@ -495,6 +524,22 @@ function handleNdjsonEvent(
   }
 
   if (event.type === "assistant") {
+    // Extract text from the assistant message's content array, but only if
+    // no content_block_delta events have arrived yet (to avoid double-counting)
+    if (!ctx.streamingText) {
+      const msg = event.message as Record<string, unknown> | undefined;
+      const content = msg?.content;
+      if (Array.isArray(content)) {
+        for (const block of content) {
+          if (typeof block === "object" && block !== null && (block as Record<string, unknown>).type === "text") {
+            const text = (block as Record<string, unknown>).text;
+            if (typeof text === "string") {
+              ctx.streamingText += text;
+            }
+          }
+        }
+      }
+    }
     sendFn({ type: "assistant", data: event });
     return;
   }
@@ -505,6 +550,9 @@ function handleNdjsonEvent(
   }
 
   if (event.type === "system") {
+    if (event.subtype === "init" && typeof event.cwd === "string" && onInitCwd) {
+      onInitCwd(event.cwd);
+    }
     sendFn({ type: "system", data: event });
     return;
   }
@@ -523,6 +571,15 @@ if (fs.existsSync(clientDist)) {
     res.sendFile(path.join(clientDist, "index.html"));
   });
 }
+
+// Kill all spawned claude processes on server shutdown (e.g. tsx watch restart)
+function shutdownAll() {
+  for (const client of wss.clients) {
+    client.close();
+  }
+}
+process.on("SIGTERM", shutdownAll);
+process.on("SIGINT", shutdownAll);
 
 server.listen(PORT, () => {
   console.log(`cc-web server listening on port ${PORT}`);

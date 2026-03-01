@@ -145,6 +145,14 @@ export function touchConversation(id: string): void {
   atomicWrite(conversationPath(id), JSON.stringify(conv, null, 2));
 }
 
+export function setWorktreeCwd(id: string, cwd: string): void {
+  if (!isValidConversationId(id)) return;
+  const conv = conversationIndex.get(id);
+  if (!conv) return;
+  conv.worktreeCwd = cwd;
+  atomicWrite(conversationPath(id), JSON.stringify(conv, null, 2));
+}
+
 export function deleteConversation(id: string): void {
   if (!isValidConversationId(id)) return;
   conversationIndex.delete(id);

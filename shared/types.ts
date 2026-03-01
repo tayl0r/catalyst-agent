@@ -6,6 +6,7 @@ export interface Conversation {
   slug: string;
   title: string; // TODO: remove once migration is complete — kept for compat, set equal to name
   projectId: string;
+  worktreeCwd?: string; // cwd reported by Claude CLI init event (worktree path)
   created_at: string;
   updated_at: string;
 }
