@@ -77,8 +77,8 @@ wss.on("connection", (ws: WebSocket) => {
     }
 
     // parsed is narrowed to PromptMessage here
-    if (parsed.text.length > 1_000_000) {
-      send({ type: "error", data: "Prompt too large (max 1MB)" });
+    if (!parsed.text || parsed.text.length > 1_000_000) {
+      send({ type: "error", data: !parsed.text ? "Empty prompt" : "Prompt too large (max 1MB)" });
       return;
     }
 
@@ -107,36 +107,44 @@ wss.on("connection", (ws: WebSocket) => {
 
     activeProcess = child;
 
+    const { stdin, stdout, stderr } = child;
+    if (!stdin || !stdout || !stderr) {
+      send({ type: "error", data: "Failed to attach to process stdio" });
+      cleanup();
+      return;
+    }
+
     // Write prompt via stdin to avoid ARG_MAX limits
-    child.stdin!.on("error", () => { /* ignore EPIPE */ });
-    child.stdin!.write(parsed.text);
-    child.stdin!.end();
+    stdin.on("error", () => { /* ignore EPIPE */ });
+    stdin.write(parsed.text);
+    stdin.end();
 
     // NDJSON line buffer — chunks may arrive mid-line
     let buffer = "";
 
-    child.stdout!.on("data", (chunk: Buffer) => {
+    stdout.on("data", (chunk: Buffer) => {
       buffer += chunk.toString();
       const lines = buffer.split("\n");
       // Keep last incomplete segment in buffer
-      buffer = lines.pop()!;
+      buffer = lines.pop() ?? "";
 
       for (const line of lines) {
         const trimmed = line.trim();
         if (!trimmed) continue;
 
-        let parsed: Record<string, unknown>;
+        let event: unknown;
         try {
-          parsed = JSON.parse(trimmed);
+          event = JSON.parse(trimmed);
         } catch {
           continue;
         }
+        if (typeof event !== "object" || event === null) continue;
 
-        handleNdjsonEvent(parsed, send);
+        handleNdjsonEvent(event as Record<string, unknown>, send);
       }
     });
 
-    child.stderr!.on("data", (chunk: Buffer) => {
+    stderr.on("data", (chunk: Buffer) => {
       send({ type: "stderr", data: chunk.toString() });
     });
 
@@ -148,8 +156,10 @@ wss.on("connection", (ws: WebSocket) => {
     child.on("close", (code: number | null) => {
       if (buffer.trim()) {
         try {
-          const parsed = JSON.parse(buffer.trim());
-          handleNdjsonEvent(parsed, send);
+          const final = JSON.parse(buffer.trim());
+          if (typeof final === "object" && final !== null) {
+            handleNdjsonEvent(final as Record<string, unknown>, send);
+          }
         } catch {
           // ignore incomplete final line
         }
@@ -169,25 +179,28 @@ function handleNdjsonEvent(
   send: (obj: ServerMessage) => void,
 ): void {
   if (event.type === "content_block_delta") {
-    const delta = event.delta as Record<string, unknown> | undefined;
-    if (delta?.type === "text_delta" && delta.text) {
-      send({ type: "text", data: delta.text as string });
+    const delta = event.delta;
+    if (typeof delta !== "object" || delta === null) return;
+    const d = delta as Record<string, unknown>;
+    if (d.type === "text_delta" && typeof d.text === "string") {
+      send({ type: "text", data: d.text });
     }
     return;
   }
 
   if (event.type === "assistant") {
-    send({ type: "assistant", data: event as Record<string, unknown> });
+    send({ type: "assistant", data: event });
     return;
   }
 
   if (event.type === "result") {
+    // Safe: ResultData has an index signature, so any Record<string, unknown> satisfies it
     send({ type: "result", data: event as ResultData });
     return;
   }
 
   if (event.type === "system") {
-    send({ type: "system", data: event as Record<string, unknown> });
+    send({ type: "system", data: event });
     return;
   }
 }

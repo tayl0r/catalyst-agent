@@ -56,7 +56,7 @@ export default function useWebSocket(): UseWebSocketReturn {
       if (!mountedRef.current) return;
       let msg: ServerMessage;
       try {
-        const raw: unknown = JSON.parse(event.data as string);
+        const raw: unknown = JSON.parse(event.data);
         if (!isServerMessage(raw)) return;
         msg = raw;
       } catch {
