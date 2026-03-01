@@ -271,6 +271,10 @@ wss.on("connection", (ws: WebSocket) => {
       }
       const id = crypto.randomUUID();
       let slug = slugify(trimmedName);
+      if (slug === "conversation") {
+        send({ type: "error", data: "Name must contain at least one letter or number" });
+        return;
+      }
       // Ensure slug uniqueness within project
       const existingSlugs = new Set(getProjectSlugs(parsed.projectId));
       if (existingSlugs.has(slug)) {
@@ -278,8 +282,8 @@ wss.on("connection", (ws: WebSocket) => {
         while (existingSlugs.has(`${slug}-${i}`)) i++;
         slug = `${slug}-${i}`;
       }
-      const conv = createConversation(id, trimmedName, slug, parsed.projectId);
       killProcess();
+      const conv = createConversation(id, trimmedName, slug, parsed.projectId);
       currentConversationId = id;
       pendingProjectId = parsed.projectId;
       isFirstPrompt = true;

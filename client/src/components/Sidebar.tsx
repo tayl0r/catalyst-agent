@@ -1,3 +1,4 @@
+import { useMemo } from "react";
 import { Link } from "react-router-dom";
 import type { Conversation, Project } from "@shared/types";
 
@@ -50,13 +51,17 @@ export default function Sidebar({
   filterProjectId,
   onFilterProject,
 }: SidebarProps) {
-  const sorted = [...conversations]
-    .filter((c) => !filterProjectId || c.projectId === filterProjectId)
-    .sort(
-      (a, b) => new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime()
-    );
+  const sorted = useMemo(
+    () => [...conversations]
+      .filter((c) => !filterProjectId || c.projectId === filterProjectId)
+      .sort((a, b) => new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime()),
+    [conversations, filterProjectId]
+  );
 
-  const projectMap = new Map(projects.map((p) => [p.id, p]));
+  const projectMap = useMemo(
+    () => new Map(projects.map((p) => [p.id, p])),
+    [projects]
+  );
   const noProjects = projects.length === 0;
 
   return (

@@ -205,6 +205,7 @@ export default function NewConversationModal({
             type="text"
             value={name}
             onChange={(e) => setName(e.target.value)}
+            maxLength={200}
             placeholder="e.g. add-auth-flow"
             className="w-full rounded border border-gray-700 bg-gray-800 px-3 py-2 text-sm text-gray-200 placeholder-gray-500 focus:border-blue-500 focus:outline-none"
           />
