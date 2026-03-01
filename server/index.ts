@@ -1,7 +1,8 @@
-const express = require("express");
-const http = require("http");
-const { WebSocketServer } = require("ws");
-const { spawn } = require("child_process");
+import express from "express";
+import http from "http";
+import { WebSocketServer, WebSocket } from "ws";
+import { spawn, ChildProcess } from "child_process";
+import type { ClientMessage, ServerMessage, ResultData } from "@shared/types.js";
 
 const PORT = process.env.PORT || 3001;
 
@@ -19,36 +20,35 @@ server.on("upgrade", (req, socket, head) => {
   }
 });
 
-wss.on("connection", (ws) => {
-  let activeProcess = null;
-  let killTimeout = null;
+wss.on("connection", (ws: WebSocket) => {
+  let activeProcess: ChildProcess | null = null;
+  let killTimeout: ReturnType<typeof setTimeout> | null = null;
 
-  function send(obj) {
-    if (ws.readyState === ws.OPEN) {
+  function send(obj: ServerMessage): void {
+    if (ws.readyState === WebSocket.OPEN) {
       ws.send(JSON.stringify(obj));
     }
   }
 
-  function killProcess() {
+  function killProcess(): void {
     if (!activeProcess) return;
     const proc = activeProcess;
-    activeProcess = null; // prevent double-kill orphaning timeouts
+    activeProcess = null;
     try {
       proc.kill("SIGTERM");
-    } catch (_) {
-      // process already exited
+    } catch {
       return;
     }
     killTimeout = setTimeout(() => {
       try {
         proc.kill("SIGKILL");
-      } catch (_) {
+      } catch {
         // process already exited
       }
     }, 3000);
   }
 
-  function cleanup() {
+  function cleanup(): void {
     if (killTimeout) {
       clearTimeout(killTimeout);
       killTimeout = null;
@@ -56,10 +56,10 @@ wss.on("connection", (ws) => {
     activeProcess = null;
   }
 
-  ws.on("message", (raw) => {
-    let msg;
+  ws.on("message", (raw: Buffer) => {
+    let msg: ClientMessage;
     try {
-      msg = JSON.parse(raw.toString());
+      msg = JSON.parse(raw.toString()) as ClientMessage;
     } catch {
       send({ type: "error", data: "Invalid JSON" });
       return;
@@ -85,11 +85,9 @@ wss.on("connection", (ws) => {
       return;
     }
 
-    // Build clean env without CLAUDECODE to avoid nested session error
     const env = { ...process.env };
     delete env.CLAUDECODE;
 
-    // Set activeProcess synchronously before spawn returns to prevent races
     const args = [
       "-p",
       "--output-format",
@@ -105,25 +103,22 @@ wss.on("connection", (ws) => {
 
     activeProcess = child;
 
-    // Write prompt via stdin to avoid ARG_MAX limits
-    child.stdin.on("error", () => { /* ignore EPIPE */ });
-    child.stdin.write(msg.text);
-    child.stdin.end();
+    child.stdin!.on("error", () => { /* ignore EPIPE */ });
+    child.stdin!.write(msg.text);
+    child.stdin!.end();
 
-    // NDJSON line buffer
     let buffer = "";
 
-    child.stdout.on("data", (chunk) => {
+    child.stdout!.on("data", (chunk: Buffer) => {
       buffer += chunk.toString();
       const lines = buffer.split("\n");
-      // Keep last incomplete segment in buffer
-      buffer = lines.pop();
+      buffer = lines.pop()!;
 
       for (const line of lines) {
         const trimmed = line.trim();
         if (!trimmed) continue;
 
-        let parsed;
+        let parsed: Record<string, unknown>;
         try {
           parsed = JSON.parse(trimmed);
         } catch {
@@ -134,17 +129,16 @@ wss.on("connection", (ws) => {
       }
     });
 
-    child.stderr.on("data", (chunk) => {
+    child.stderr!.on("data", (chunk: Buffer) => {
       send({ type: "stderr", data: chunk.toString() });
     });
 
-    child.on("error", (err) => {
+    child.on("error", (err: Error) => {
       send({ type: "error", data: err.message });
       cleanup();
     });
 
-    child.on("close", (code) => {
-      // Process any remaining buffer
+    child.on("close", (code: number | null) => {
       if (buffer.trim()) {
         try {
           const parsed = JSON.parse(buffer.trim());
@@ -163,30 +157,30 @@ wss.on("connection", (ws) => {
   });
 });
 
-function handleNdjsonEvent(event, send) {
-  // stream_event with content_block_delta containing text
+function handleNdjsonEvent(
+  event: Record<string, unknown>,
+  send: (obj: ServerMessage) => void,
+): void {
   if (event.type === "content_block_delta") {
-    if (event.delta?.type === "text_delta" && event.delta?.text) {
-      send({ type: "text", data: event.delta.text });
+    const delta = event.delta as Record<string, unknown> | undefined;
+    if (delta?.type === "text_delta" && delta.text) {
+      send({ type: "text", data: delta.text as string });
     }
     return;
   }
 
-  // Complete assistant message
   if (event.type === "assistant") {
-    send({ type: "assistant", data: event });
+    send({ type: "assistant", data: event as Record<string, unknown> });
     return;
   }
 
-  // Result message with cost/usage
   if (event.type === "result") {
-    send({ type: "result", data: event });
+    send({ type: "result", data: event as ResultData });
     return;
   }
 
-  // System/init message
   if (event.type === "system") {
-    send({ type: "system", data: event });
+    send({ type: "system", data: event as Record<string, unknown> });
     return;
   }
 }
