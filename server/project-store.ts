@@ -82,6 +82,7 @@ function scaffoldProject(projectPath: string): void {
   try {
     // 1. git init (skip if already inside a git repo)
     let hasGit = false;
+    let freshRepo = false;
     try {
       execFileSync("git", ["rev-parse", "--is-inside-work-tree"], {
         cwd: projectPath,
@@ -91,18 +92,19 @@ function scaffoldProject(projectPath: string): void {
       hasGit = true;
     } catch {
       try {
-        execFileSync("git", ["init"], {
+        execFileSync("git", ["init", "-b", "main"], {
           cwd: projectPath,
           timeout: 5000,
           stdio: "pipe",
         });
-        // Create initial commit so a branch exists (required for worktrees)
+        // Empty commit so a branch exists (required for worktrees)
         execFileSync("git", ["commit", "--allow-empty", "-m", "Initial commit"], {
           cwd: projectPath,
           timeout: 5000,
           stdio: "pipe",
         });
         hasGit = true;
+        freshRepo = true;
       } catch (err) {
         console.warn(`Could not git init "${projectPath}":`, (err as Error).message);
       }
@@ -143,6 +145,27 @@ function scaffoldProject(projectPath: string): void {
     const claudeignorePath = path.join(projectPath, ".claudeignore");
     if (!fs.existsSync(claudeignorePath)) {
       atomicWrite(claudeignorePath, "node_modules/\n*.log\n");
+    }
+
+    // 5. Commit scaffolded files (only for freshly created repos)
+    if (freshRepo) {
+      try {
+        execFileSync("git", ["add", "-A"], {
+          cwd: projectPath,
+          timeout: 5000,
+          stdio: "pipe",
+        });
+        execFileSync("git", ["commit", "-m", "Add scaffolded files"], {
+          cwd: projectPath,
+          timeout: 5000,
+          stdio: "pipe",
+        });
+      } catch (err) {
+        console.warn(
+          `Could not create initial commit in "${projectPath}":`,
+          (err as Error).message,
+        );
+      }
     }
 
     console.log(`Scaffolded project at "${projectPath}"`);
