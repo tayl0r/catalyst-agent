@@ -432,8 +432,9 @@ wss.on("connection", (ws: WebSocket) => {
     });
 
     activeProcess = child;
+    const shellCmd = `claude ${args.map((a) => (/[^a-zA-Z0-9_./:=-]/.test(a) ? `'${a.replace(/'/g, "'\\''")}'` : a)).join(" ")}`;
     console.log(
-      `PROCESS: [start] pid=${child.pid} cmd="claude ${args.slice(0, -1).join(" ")}" cwd=${spawnCwd || "none"} project="${logProjectName}" convo="${logConvName}" session=${convId}`,
+      `PROCESS: [start] pid=${child.pid} cwd=${spawnCwd || "none"} project="${logProjectName}" convo="${logConvName}" session=${convId}\n  $ ${shellCmd}`,
     );
 
     // Per-prompt streaming context — not shared across prompts.
@@ -464,7 +465,28 @@ wss.on("connection", (ws: WebSocket) => {
 
     let buffer = "";
 
+    let stdoutBytes = 0;
+    let stderrBytes = 0;
+    let eventCount = 0;
+
+    // Detect hung processes — if no stdout/stderr within 30s, warn
+    const SPAWN_TIMEOUT_MS = 30_000;
+    const spawnTimer = setTimeout(() => {
+      if (stdoutBytes === 0 && stderrBytes === 0 && activeProcess === child) {
+        console.error(
+          `PROCESS: [timeout] pid=${child.pid} session=${convId} no output after ${SPAWN_TIMEOUT_MS / 1000}s — killing`,
+        );
+        send({
+          type: "error",
+          data: "Claude CLI produced no output — process may be hung. Killed.",
+        });
+        killProcess();
+      }
+    }, SPAWN_TIMEOUT_MS);
+
     stdout.on("data", (chunk: Buffer) => {
+      clearTimeout(spawnTimer);
+      stdoutBytes += chunk.length;
       buffer += chunk.toString();
       const lines = buffer.split("\n");
       buffer = lines.pop() ?? "";
@@ -476,18 +498,39 @@ wss.on("connection", (ws: WebSocket) => {
         let event: unknown;
         try {
           event = JSON.parse(trimmed);
-        } catch {
+        } catch (e) {
+          console.warn(
+            `STREAM: [parse-error] pid=${child.pid} session=${convId} error=${(e as Error).message} line=${JSON.stringify(trimmed.slice(0, 200))}`,
+          );
           continue;
         }
         if (typeof event !== "object" || event === null) continue;
 
+        eventCount++;
+        const ev = event as Record<string, unknown>;
+        const eventType = ev.type as string;
+        const eventSubtype = ev.subtype as string | undefined;
+        if (eventCount <= 5 || eventType === "system" || eventType === "result") {
+          console.log(
+            `STREAM: [event] pid=${child.pid} session=${convId} #${eventCount} type=${eventType}${eventSubtype ? `.${eventSubtype}` : ""}`,
+          );
+        }
+
         // Only send to client if this is still the active process
         const sendFn = activeProcess === child ? send : () => {};
-        handleNdjsonEvent(event as Record<string, unknown>, sendFn, ctx, onInitCwd);
+        handleNdjsonEvent(ev, sendFn, ctx, onInitCwd);
       }
     });
 
     stderr.on("data", (chunk: Buffer) => {
+      clearTimeout(spawnTimer);
+      stderrBytes += chunk.length;
+      const text = chunk.toString().trim();
+      if (text) {
+        console.warn(
+          `STDERR: pid=${child.pid} session=${convId} text=${JSON.stringify(text.slice(0, 500))}`,
+        );
+      }
       if (activeProcess === child) {
         send({ type: "stderr", data: chunk.toString() });
       }
@@ -495,7 +538,7 @@ wss.on("connection", (ws: WebSocket) => {
 
     child.on("error", (err: Error) => {
       console.error(
-        `ERROR: project="${logProjectName}" convo="${logConvName}" session=${convId} error=${JSON.stringify(err.message)}`,
+        `PROCESS: [error] pid=${child.pid} session=${convId} error=${JSON.stringify(err.message)} project="${logProjectName}" convo="${logConvName}"`,
       );
       if (activeProcess === child) {
         send({ type: "error", data: err.message });
@@ -504,8 +547,9 @@ wss.on("connection", (ws: WebSocket) => {
     });
 
     child.on("close", (code: number | null) => {
+      clearTimeout(spawnTimer);
       console.log(
-        `PROCESS: [exit] pid=${child.pid} exitCode=${code} project="${logProjectName}" convo="${logConvName}" session=${convId}`,
+        `PROCESS: [exit] pid=${child.pid} exitCode=${code} stdoutBytes=${stdoutBytes} stderrBytes=${stderrBytes} events=${eventCount} project="${logProjectName}" convo="${logConvName}" session=${convId}`,
       );
       const isActive = activeProcess === child;
 

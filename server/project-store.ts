@@ -96,6 +96,12 @@ function scaffoldProject(projectPath: string): void {
           timeout: 5000,
           stdio: "pipe",
         });
+        // Create initial commit so a branch exists (required for worktrees)
+        execFileSync("git", ["commit", "--allow-empty", "-m", "Initial commit"], {
+          cwd: projectPath,
+          timeout: 5000,
+          stdio: "pipe",
+        });
         hasGit = true;
       } catch (err) {
         console.warn(`Could not git init "${projectPath}":`, (err as Error).message);
