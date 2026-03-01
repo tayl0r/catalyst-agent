@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { Link } from "react-router-dom";
-import { PROJECT_COLORS } from "@shared/types";
+import { PROJECT_COLORS, PORT_INCREMENT } from "@shared/types";
 import useProjects from "../hooks/useProjects";
 
 interface ProjectForm {
@@ -43,8 +43,12 @@ export default function ProjectsPage() {
   };
 
   const handleSave = async () => {
-    if (!form.name.trim() || !form.path.trim()) {
-      setFormError("Name and path are required");
+    if (!form.name.trim()) {
+      setFormError("Name is required");
+      return;
+    }
+    if (editingId && !form.path.trim()) {
+      setFormError("Path is required");
       return;
     }
     setFormError(null);
@@ -61,7 +65,6 @@ export default function ProjectsPage() {
     } else {
       const result = await createProject({
         name: form.name,
-        path: form.path,
         description: form.description || undefined,
         color: form.color,
       });
@@ -91,13 +94,15 @@ export default function ProjectsPage() {
           onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))}
           className="w-full rounded border border-gray-700 bg-gray-800 px-3 py-2 text-sm text-gray-100 placeholder-gray-500 focus:border-blue-500 focus:outline-none"
         />
-        <input
-          type="text"
-          placeholder="Absolute path (e.g. /Users/you/dev/project)"
-          value={form.path}
-          onChange={(e) => setForm((f) => ({ ...f, path: e.target.value }))}
-          className="w-full rounded border border-gray-700 bg-gray-800 px-3 py-2 text-sm text-gray-100 placeholder-gray-500 focus:border-blue-500 focus:outline-none"
-        />
+        {editingId && (
+          <input
+            type="text"
+            placeholder="Absolute path (e.g. /Users/you/dev/project)"
+            value={form.path}
+            onChange={(e) => setForm((f) => ({ ...f, path: e.target.value }))}
+            className="w-full rounded border border-gray-700 bg-gray-800 px-3 py-2 text-sm text-gray-100 placeholder-gray-500 focus:border-blue-500 focus:outline-none"
+          />
+        )}
         <input
           type="text"
           placeholder="Description (optional)"
@@ -175,6 +180,7 @@ export default function ProjectsPage() {
                 <div className="min-w-0 flex-1">
                   <p className="text-sm font-medium truncate">{project.name}</p>
                   <p className="text-xs text-gray-500 truncate">{project.path}</p>
+                  <p className="text-xs text-gray-500">Ports {project.port}&ndash;{project.port + PORT_INCREMENT - 1}</p>
                   {project.description && (
                     <p className="text-xs text-gray-400 mt-0.5 truncate">{project.description}</p>
                   )}

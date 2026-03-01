@@ -6,7 +6,7 @@ interface UseProjectsReturn {
   loading: boolean;
   error: string | null;
   refresh: () => void;
-  createProject: (data: { name: string; path: string; description?: string; color?: string }) => Promise<Project | null>;
+  createProject: (data: { name: string; description?: string; color?: string }) => Promise<Project | null>;
   updateProject: (id: string, data: Partial<Pick<Project, "name" | "path" | "description" | "color">>) => Promise<Project | null>;
   deleteProject: (id: string) => Promise<boolean>;
 }
@@ -39,7 +39,7 @@ export default function useProjects(): UseProjectsReturn {
   }, [refresh]);
 
   const createProjectFn = useCallback(
-    async (data: { name: string; path: string; description?: string; color?: string }): Promise<Project | null> => {
+    async (data: { name: string; description?: string; color?: string }): Promise<Project | null> => {
       try {
         const res = await fetch("/api/projects", {
           method: "POST",

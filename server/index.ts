@@ -35,7 +35,7 @@ import {
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 dotenv.config({ path: [path.resolve(__dirname, "../.env.local"), path.resolve(__dirname, "../.env")] });
 
-const PORT = process.env.PORT || 3001;
+const PORT = process.env.PORT || 2999;
 const MAX_CONNECTIONS = 10;
 
 const app = express();
@@ -65,27 +65,33 @@ app.get("/api/projects", (_req, res) => {
 });
 
 app.post("/api/projects", (req, res) => {
-  const { name, path: projectPath, description, color } = req.body;
+  const { name, description, color } = req.body;
   if (typeof name !== "string" || !name.trim()) {
     res.status(400).json({ error: "name is required" });
     return;
   }
-  if (typeof projectPath !== "string" || !projectPath.trim()) {
-    res.status(400).json({ error: "path is required" });
+  const trimmedName = name.trim();
+  if (trimmedName.length > 200) {
+    res.status(400).json({ error: "name must be at most 200 characters" });
     return;
   }
-  const resolvedPath = expandTilde(projectPath.trim());
+  const rootDir = expandTilde(process.env.ROOT_PROJECT_DIR || "~/dev");
+  // slugify returns "conversation" as fallback when input has no alphanumeric chars
+  let dirName = slugify(trimmedName);
+  if (dirName === "conversation") dirName = "project";
+  const projectPath = path.join(rootDir, dirName);
+  const existingProjects = loadProjects();
+  if (existingProjects.some((p) => p.path === projectPath)) {
+    res.status(409).json({ error: "A project with that name already exists" });
+    return;
+  }
   try {
-    const stat = fs.statSync(resolvedPath);
-    if (!stat.isDirectory()) {
-      res.status(400).json({ error: "path is not a directory" });
-      return;
-    }
-  } catch {
-    res.status(400).json({ error: "path does not exist" });
+    fs.mkdirSync(projectPath, { recursive: true });
+  } catch (err) {
+    res.status(500).json({ error: `Could not create directory: ${(err as Error).message}` });
     return;
   }
-  const project = createProject(name.trim(), resolvedPath, description?.trim(), color);
+  const project = createProject(trimmedName, projectPath, description?.trim(), color);
   res.status(201).json(project);
 });
 

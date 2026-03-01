@@ -26,9 +26,12 @@ export interface Project {
   id: string;
   name: string;
   path: string;
+  port: number;
   description?: string;
   color: string; // hex color e.g. "#3b82f6"
 }
+
+export const PORT_INCREMENT = 50;
 
 export const PROJECT_COLORS = [
   "#3b82f6", // blue

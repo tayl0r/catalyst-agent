@@ -24,12 +24,12 @@ export default defineConfig({
   server: {
     proxy: {
       "/ws": {
-        target: "http://localhost:3001",
+        target: "http://localhost:2999",
         ws: true,
         changeOrigin: true,
       },
       "/api": {
-        target: "http://localhost:3001",
+        target: "http://localhost:2999",
         changeOrigin: true,
       },
     },

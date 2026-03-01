@@ -30,7 +30,7 @@ export default function NewConversationModal({
 
   const visibleResults = useMemo(() => {
     const q = projectQuery.toLowerCase();
-    return projects.filter((p) => p.name.toLowerCase().includes(q)).slice(0, 15);
+    return projects.filter((p) => p.name.toLowerCase().includes(q));
   }, [projects, projectQuery]);
 
   // Reset state when modal opens
