@@ -2,15 +2,12 @@ import fs from "fs";
 import path from "path";
 import { fileURLToPath } from "url";
 import type { Conversation, UIMessage } from "@shared/types.js";
-import { slugify } from "@shared/types.js";
 import { isValidId, atomicWrite, readJson } from "./utils.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const DATA_DIR = path.join(__dirname, "data");
 const MESSAGES_DIR = path.join(DATA_DIR, "messages");
 const CONVERSATIONS_DIR = path.join(DATA_DIR, "conversations");
-const OLD_CONVERSATIONS_FILE = path.join(DATA_DIR, "conversations.json");
-const MIGRATED_SENTINEL = path.join(DATA_DIR, "conversations.json.migrated");
 
 // Concurrency note: All I/O in this module is synchronous (readFileSync,
 // writeFileSync, renameSync). Since Node.js is single-threaded, these
@@ -46,35 +43,6 @@ ensureDirs();
 
 const conversationIndex = new Map<string, Conversation>();
 
-function migrateFromMonolithicFile(): void {
-  // Already migrated
-  if (fs.existsSync(MIGRATED_SENTINEL)) return;
-  // No old file to migrate
-  if (!fs.existsSync(OLD_CONVERSATIONS_FILE)) return;
-
-  const oldConversations = readJson<Conversation[]>(OLD_CONVERSATIONS_FILE, []);
-  for (const conv of oldConversations) {
-    const filePath = conversationPath(conv.id);
-    // Skip if individual file already exists
-    if (fs.existsSync(filePath)) continue;
-    // Backfill name/slug for old conversations
-    if (!conv.name) {
-      conv.name = conv.title || "Untitled";
-    }
-    if (!conv.slug) {
-      conv.slug = slugify(conv.name);
-    }
-    if (!conv.title) {
-      conv.title = conv.name;
-    }
-    atomicWrite(filePath, JSON.stringify(conv, null, 2));
-  }
-
-  // Rename old file as migration sentinel
-  fs.renameSync(OLD_CONVERSATIONS_FILE, MIGRATED_SENTINEL);
-  console.log(`Migrated ${oldConversations.length} conversations to individual files`);
-}
-
 function buildIndex(): void {
   conversationIndex.clear();
   let entries: fs.Dirent[];
@@ -93,8 +61,7 @@ function buildIndex(): void {
   }
 }
 
-// Run migration and build index on startup
-migrateFromMonolithicFile();
+// Build index on startup
 buildIndex();
 
 // --- Public API ---
