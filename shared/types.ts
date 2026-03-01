@@ -1,3 +1,12 @@
+// --- Conversation metadata ---
+
+export interface Conversation {
+  id: string;
+  title: string;
+  created_at: string;
+  updated_at: string;
+}
+
 // --- Client-to-server messages ---
 
 export interface PromptMessage {
@@ -9,7 +18,26 @@ export interface KillMessage {
   type: "kill";
 }
 
-export type ClientMessage = PromptMessage | KillMessage;
+export interface StartMessage {
+  type: "start";
+  conversationId?: string;
+}
+
+export interface ListConversationsMessage {
+  type: "list_conversations";
+}
+
+export interface DeleteConversationMessage {
+  type: "delete_conversation";
+  conversationId: string;
+}
+
+export type ClientMessage =
+  | PromptMessage
+  | KillMessage
+  | StartMessage
+  | ListConversationsMessage
+  | DeleteConversationMessage;
 
 // --- Server-to-client messages ---
 
@@ -57,6 +85,26 @@ export interface DoneMessage {
   exitCode: number | null;
 }
 
+export interface ConversationMessage {
+  type: "conversation";
+  conversation: Conversation | null;
+}
+
+export interface ConversationListMessage {
+  type: "conversation_list";
+  conversations: Conversation[];
+}
+
+export interface ConversationDeletedMessage {
+  type: "conversation_deleted";
+  conversationId: string;
+}
+
+export interface MessagesMessage {
+  type: "messages";
+  messages: UIMessage[];
+}
+
 export type ServerMessage =
   | TextMessage
   | AssistantMessage
@@ -64,7 +112,11 @@ export type ServerMessage =
   | SystemMessage
   | ErrorMessage
   | StderrMessage
-  | DoneMessage;
+  | DoneMessage
+  | ConversationMessage
+  | ConversationListMessage
+  | ConversationDeletedMessage
+  | MessagesMessage;
 
 // --- Client-side UI message types (different from wire types) ---
 
@@ -116,11 +168,17 @@ export function isClientMessage(msg: unknown): msg is ClientMessage {
   const obj = msg as Record<string, unknown>;
   if (obj.type === "kill") return true;
   if (obj.type === "prompt" && typeof obj.text === "string") return true;
+  if (obj.type === "start") {
+    return obj.conversationId === undefined || typeof obj.conversationId === "string";
+  }
+  if (obj.type === "list_conversations") return true;
+  if (obj.type === "delete_conversation" && typeof obj.conversationId === "string") return true;
   return false;
 }
 
 const SERVER_MESSAGE_TYPES: ReadonlySet<string> = new Set([
   "text", "assistant", "result", "system", "error", "stderr", "done",
+  "conversation", "conversation_list", "conversation_deleted", "messages",
 ]);
 
 export function isServerMessage(msg: unknown): msg is ServerMessage {

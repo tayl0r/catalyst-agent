@@ -1,11 +1,23 @@
 import express from "express";
 import http from "http";
+import crypto from "crypto";
 import { WebSocketServer, WebSocket } from "ws";
 import { spawn, ChildProcess } from "child_process";
 import { isClientMessage } from "@shared/types.js";
-import type { ServerMessage, ResultData } from "@shared/types.js";
+import type { ServerMessage, ResultData, UIMessage } from "@shared/types.js";
+import {
+  isValidConversationId,
+  loadConversations,
+  getConversation,
+  createConversation,
+  touchConversation,
+  deleteConversation as deleteConv,
+  loadMessages,
+  appendMessage,
+} from "./store.js";
 
 const PORT = process.env.PORT || 3001;
+const MAX_CONNECTIONS = 10;
 
 const app = express();
 const server = http.createServer(app);
@@ -21,9 +33,39 @@ server.on("upgrade", (req, socket, head) => {
   }
 });
 
+function broadcast(obj: ServerMessage): void {
+  const data = JSON.stringify(obj);
+  for (const client of wss.clients) {
+    if (client.readyState === WebSocket.OPEN) {
+      client.send(data);
+    }
+  }
+}
+
+function broadcastConversationList(): void {
+  broadcast({ type: "conversation_list", conversations: loadConversations() });
+}
+
+function makeTitle(text: string): string {
+  const max = 80;
+  if (text.length <= max) return text;
+  const sentenceEnd = text.lastIndexOf(".", max);
+  if (sentenceEnd > 20) return text.slice(0, sentenceEnd + 1);
+  const wordEnd = text.lastIndexOf(" ", max);
+  if (wordEnd > 20) return text.slice(0, wordEnd) + "...";
+  return text.slice(0, max) + "...";
+}
+
 wss.on("connection", (ws: WebSocket) => {
+  if (wss.clients.size > MAX_CONNECTIONS) {
+    ws.close(1013, "Too many connections");
+    return;
+  }
+
   let activeProcess: ChildProcess | null = null;
   let killTimeout: ReturnType<typeof setTimeout> | null = null;
+  let currentConversationId: string | null = null;
+  let isFirstPrompt = true;
 
   function send(obj: ServerMessage): void {
     if (ws.readyState === WebSocket.OPEN) {
@@ -49,12 +91,15 @@ wss.on("connection", (ws: WebSocket) => {
     }, 3000);
   }
 
-  function cleanup(): void {
+  function cleanup(child: ChildProcess): void {
+    // Only clear activeProcess if this child is still the active one
+    if (activeProcess === child) {
+      activeProcess = null;
+    }
     if (killTimeout) {
       clearTimeout(killTimeout);
       killTimeout = null;
     }
-    activeProcess = null;
   }
 
   ws.on("message", (raw: Buffer) => {
@@ -76,6 +121,54 @@ wss.on("connection", (ws: WebSocket) => {
       return;
     }
 
+    if (parsed.type === "list_conversations") {
+      send({ type: "conversation_list", conversations: loadConversations() });
+      return;
+    }
+
+    if (parsed.type === "delete_conversation") {
+      if (!isValidConversationId(parsed.conversationId)) {
+        send({ type: "error", data: "Invalid conversation ID" });
+        return;
+      }
+      deleteConv(parsed.conversationId);
+      // If we deleted the current conversation, reset state
+      if (currentConversationId === parsed.conversationId) {
+        killProcess();
+        currentConversationId = null;
+        isFirstPrompt = true;
+      }
+      // Broadcast deletion and updated list to all clients
+      broadcast({ type: "conversation_deleted", conversationId: parsed.conversationId });
+      broadcastConversationList();
+      return;
+    }
+
+    if (parsed.type === "start") {
+      killProcess();
+      if (parsed.conversationId) {
+        if (!isValidConversationId(parsed.conversationId)) {
+          send({ type: "error", data: "Invalid conversation ID" });
+          return;
+        }
+        const conv = getConversation(parsed.conversationId);
+        if (!conv) {
+          send({ type: "error", data: "Conversation not found" });
+          return;
+        }
+        currentConversationId = parsed.conversationId;
+        isFirstPrompt = false;
+        const messages = loadMessages(parsed.conversationId);
+        send({ type: "messages", messages });
+        send({ type: "conversation", conversation: conv });
+      } else {
+        currentConversationId = null;
+        isFirstPrompt = true;
+        send({ type: "conversation", conversation: null });
+      }
+      return;
+    }
+
     // parsed is narrowed to PromptMessage here
     if (!parsed.text || parsed.text.length > 1_000_000) {
       send({ type: "error", data: !parsed.text ? "Empty prompt" : "Prompt too large (max 1MB)" });
@@ -87,19 +180,40 @@ wss.on("connection", (ws: WebSocket) => {
       return;
     }
 
+    // Conversation management
+    if (currentConversationId === null) {
+      const id = crypto.randomUUID();
+      const title = makeTitle(parsed.text);
+      const conv = createConversation(id, title);
+      currentConversationId = id;
+      isFirstPrompt = true;
+      send({ type: "conversation", conversation: conv });
+      broadcastConversationList();
+    } else {
+      touchConversation(currentConversationId);
+    }
+
+    // Store user message
+    const userMsg: UIMessage = {
+      id: crypto.randomUUID(),
+      type: "user",
+      content: parsed.text,
+    };
+    appendMessage(currentConversationId, userMsg);
+
     const env = { ...process.env };
-    // Remove CLAUDECODE to avoid nested session error from Claude CLI
     delete env.CLAUDECODE;
 
+    // Always use --session-id: it creates a new session if none exists,
+    // or resumes an existing one. Safer than --resume which may not
+    // accept a UUID argument in all CLI versions.
     const args = [
-      "-p",
-      "--output-format",
-      "stream-json",
-      "--verbose",
-      "--include-partial-messages",
+      "--session-id", currentConversationId,
+      "-p", "--output-format", "stream-json", "--verbose",
     ];
 
-    // Set activeProcess synchronously before spawn returns to prevent races
+    isFirstPrompt = false;
+
     const child = spawn("claude", args, {
       stdio: ["pipe", "pipe", "pipe"],
       env,
@@ -107,25 +221,28 @@ wss.on("connection", (ws: WebSocket) => {
 
     activeProcess = child;
 
+    // Per-prompt streaming context — not shared across prompts.
+    // Each spawn gets its own accumulator so conversation switches
+    // can't corrupt another prompt's stored text.
+    const ctx = { streamingText: "" };
+
     const { stdin, stdout, stderr } = child;
     if (!stdin || !stdout || !stderr) {
       send({ type: "error", data: "Failed to attach to process stdio" });
-      cleanup();
+      cleanup(child);
       return;
     }
 
-    // Write prompt via stdin to avoid ARG_MAX limits
     stdin.on("error", () => { /* ignore EPIPE */ });
     stdin.write(parsed.text);
     stdin.end();
 
-    // NDJSON line buffer — chunks may arrive mid-line
     let buffer = "";
+    const convId = currentConversationId;
 
     stdout.on("data", (chunk: Buffer) => {
       buffer += chunk.toString();
       const lines = buffer.split("\n");
-      // Keep last incomplete segment in buffer
       buffer = lines.pop() ?? "";
 
       for (const line of lines) {
@@ -140,32 +257,57 @@ wss.on("connection", (ws: WebSocket) => {
         }
         if (typeof event !== "object" || event === null) continue;
 
-        handleNdjsonEvent(event as Record<string, unknown>, send);
+        // Only send to client if this is still the active process
+        const sendFn = activeProcess === child ? send : () => {};
+        handleNdjsonEvent(event as Record<string, unknown>, sendFn, ctx);
       }
     });
 
     stderr.on("data", (chunk: Buffer) => {
-      send({ type: "stderr", data: chunk.toString() });
+      if (activeProcess === child) {
+        send({ type: "stderr", data: chunk.toString() });
+      }
     });
 
     child.on("error", (err: Error) => {
-      send({ type: "error", data: err.message });
-      cleanup();
+      if (activeProcess === child) {
+        send({ type: "error", data: err.message });
+      }
+      cleanup(child);
     });
 
     child.on("close", (code: number | null) => {
-      if (buffer.trim()) {
-        try {
-          const final = JSON.parse(buffer.trim());
-          if (typeof final === "object" && final !== null) {
-            handleNdjsonEvent(final as Record<string, unknown>, send);
+      const isActive = activeProcess === child;
+
+      // Only flush buffer and send done if still the active process
+      if (isActive) {
+        if (buffer.trim()) {
+          try {
+            const final = JSON.parse(buffer.trim());
+            if (typeof final === "object" && final !== null) {
+              handleNdjsonEvent(final as Record<string, unknown>, send, ctx);
+            }
+          } catch {
+            // ignore incomplete final line
           }
-        } catch {
-          // ignore incomplete final line
         }
+        send({ type: "done", exitCode: code });
       }
-      send({ type: "done", exitCode: code });
-      cleanup();
+
+      cleanup(child);
+
+      // Always store accumulated text (even from killed processes)
+      if (ctx.streamingText && convId) {
+        const assistantMsg: UIMessage = {
+          id: crypto.randomUUID(),
+          type: "assistant",
+          content: ctx.streamingText,
+          streaming: false,
+        };
+        appendMessage(convId, assistantMsg);
+        touchConversation(convId);
+        broadcastConversationList();
+      }
     });
   });
 
@@ -176,31 +318,32 @@ wss.on("connection", (ws: WebSocket) => {
 
 function handleNdjsonEvent(
   event: Record<string, unknown>,
-  send: (obj: ServerMessage) => void,
+  sendFn: (obj: ServerMessage) => void,
+  ctx: { streamingText: string },
 ): void {
   if (event.type === "content_block_delta") {
     const delta = event.delta;
     if (typeof delta !== "object" || delta === null) return;
     const d = delta as Record<string, unknown>;
     if (d.type === "text_delta" && typeof d.text === "string") {
-      send({ type: "text", data: d.text });
+      ctx.streamingText += d.text;
+      sendFn({ type: "text", data: d.text });
     }
     return;
   }
 
   if (event.type === "assistant") {
-    send({ type: "assistant", data: event });
+    sendFn({ type: "assistant", data: event });
     return;
   }
 
   if (event.type === "result") {
-    // Safe: ResultData has an index signature, so any Record<string, unknown> satisfies it
-    send({ type: "result", data: event as ResultData });
+    sendFn({ type: "result", data: event as ResultData });
     return;
   }
 
   if (event.type === "system") {
-    send({ type: "system", data: event });
+    sendFn({ type: "system", data: event });
     return;
   }
 }

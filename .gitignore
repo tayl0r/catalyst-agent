@@ -12,3 +12,4 @@ target/
 src-tauri/gen/
 .claude/settings.local.json
 .worktrees/
+server/data/

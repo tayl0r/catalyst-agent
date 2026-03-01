@@ -21,35 +21,46 @@ Three-tier: React client → WebSocket → Node server → spawned Claude CLI pr
 
 ```
 shared/          # Shared TypeScript types (imported by both client and server via @shared alias)
-  types.ts       # ClientMessage, ServerMessage, UIMessage, ConnectionStatus
+  types.ts       # ClientMessage, ServerMessage, UIMessage, Conversation, ConnectionStatus
 client/          # React 19 + Vite + Tailwind CSS (TypeScript, ES modules)
   src/
-    components/  # ChatMessage, InputArea, StatusIndicator
-    hooks/       # useWebSocket - WebSocket lifecycle + message state
-    App.tsx      # Root component
+    components/  # ChatMessage, InputArea, StatusIndicator, Sidebar
+    hooks/       # useWebSocket - WebSocket lifecycle, conversation state, message state
+    App.tsx      # Root component (sidebar + main chat layout)
 server/          # Express + ws library (TypeScript, ES modules, runs via tsx)
-  index.ts       # Monolithic server - HTTP, WebSocket, process management
+  index.ts       # HTTP, WebSocket, process management, session flags
+  store.ts       # JSON file persistence for conversations and messages
+  data/          # Runtime data directory (gitignored)
+    conversations.json
+    messages/<uuid>.json
 ```
+
+### Session Management
+
+Each conversation gets a UUID. The Claude CLI is invoked with `--session-id <uuid>` on the first prompt (creates session) and `--resume <uuid>` on subsequent prompts (loads prior context). Conversation metadata and messages are persisted in `server/data/` as JSON files. The conversation record is created lazily on the first prompt, not on WebSocket connect.
 
 ## Tech Stack
 
 - **Language:** TypeScript (strict mode), ES modules throughout
 - **Client:** React 19, Vite 6, Tailwind CSS 3, react-markdown + remark-gfm
-- **Server:** Node.js, Express 4, ws (WebSocket), tsx (runtime, no build step)
+- **Server:** Node.js, Express 4, ws (WebSocket), tsx (runtime, no build step), JSON file storage (no external DB)
 - **Root:** concurrently (parallel dev scripts), npm workspaces-style postinstall
 
 ## Code Style
 
 - TypeScript with `strict: true`, no linter/formatter configured
 - Client: functional components with hooks, Tailwind utility classes, prop interfaces on all components
-- Server: single-file architecture, ES module imports
+- Server: index.ts (WebSocket/process management) + store.ts (persistence), ES module imports
 - Components are small and focused; WebSocket logic lives in `useWebSocket` custom hook
 - Shared types in `shared/types.ts`, imported via `@shared/types` path alias (configured in both tsconfig paths and vite resolve.alias)
 
 ## Gotchas
 
 - **`@shared` path alias:** Configured in tsconfig `paths` AND `vite.config.js` `resolve.alias` — both must stay in sync
-- **CLAUDECODE env var:** Server removes this before spawning Claude CLI to prevent "nested session" errors (server/index.ts ~line 90)
+- **CLAUDECODE env var:** Server removes this before spawning Claude CLI to prevent "nested session" errors
+- **Session flags:** First prompt uses `--session-id <uuid>`, subsequent prompts use `--resume <uuid>` — both combined with `-p` pipe mode
+- **Lazy conversation creation:** Conversation DB records are created on first prompt, not on WebSocket connect, to avoid orphan records
+- **Atomic file writes:** store.ts writes to `.tmp` then renames to prevent corruption from crashes
 - **NDJSON line buffering:** Claude CLI outputs newline-delimited JSON but chunks may split mid-line — server maintains a buffer and flushes incomplete lines on process close
 - **Vite proxy required:** Client dev server proxies `/ws` to `localhost:3001` — without this, WebSocket connections fail in dev mode
 - **Process kill flow:** SIGTERM first, then SIGKILL after 3s timeout if process doesn't exit
