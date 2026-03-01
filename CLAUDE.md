@@ -26,15 +26,21 @@ shared/          # Shared TypeScript types (imported by both client and server v
   types.ts       # ClientMessage, ServerMessage, UIMessage, Conversation, ConnectionStatus
 client/          # React 19 + Vite + Tailwind CSS (TypeScript, ES modules)
   src/
-    components/  # ChatMessage, InputArea, StatusIndicator, Sidebar
-    hooks/       # useWebSocket - WebSocket lifecycle, conversation state, message state
-    App.tsx      # Root component (sidebar + main chat layout)
+    components/  # ChatMessage, InputArea, Sidebar, NewConversationModal, StreamingIndicator
+      events/    # EventRenderer, TextBlock, ThinkingBlock, ToolUseBlock, ToolResultBlock
+    hooks/       # useWebSocket (connection/messages), useProjects (project CRUD)
+    pages/       # ChatPage, ProjectsPage
+    utils/       # filterEvent (assistant event filtering)
+    App.tsx      # Root component with react-router-dom routing
 server/          # Express + ws library (TypeScript, ES modules, runs via tsx)
   index.ts       # HTTP, WebSocket, process management, session flags
   store.ts       # JSON file persistence for conversations and messages
+  project-store.ts # Project CRUD operations
+  utils.ts       # Shared server utilities (atomic writes, validation)
   data/          # Runtime data directory (gitignored)
-    conversations.json
+    conversations/<uuid>.json
     messages/<uuid>.json
+    projects.json
 ```
 
 ### Session Management
@@ -47,6 +53,10 @@ Each conversation gets a UUID. The Claude CLI is invoked with `--session-id <uui
 - **Client:** React 19, Vite 6, Tailwind CSS 3, react-markdown + remark-gfm
 - **Server:** Node.js, Express 4, ws (WebSocket), tsx (runtime, no build step), JSON file storage (no external DB)
 - **Root:** concurrently (parallel dev scripts), npm workspaces-style postinstall
+
+## Pre-commit
+
+Always run `npm run lint:fix` before committing to ensure code passes linting and formatting.
 
 ## Code Style
 
@@ -64,7 +74,7 @@ Each conversation gets a UUID. The Claude CLI is invoked with `--session-id <uui
 - **Lazy conversation creation:** Conversation DB records are created on first prompt, not on WebSocket connect, to avoid orphan records
 - **Atomic file writes:** store.ts writes to `.tmp` then renames to prevent corruption from crashes
 - **NDJSON line buffering:** Claude CLI outputs newline-delimited JSON but chunks may split mid-line — server maintains a buffer and flushes incomplete lines on process close
-- **Vite proxy required:** Client dev server proxies `/ws` to `localhost:3001` — without this, WebSocket connections fail in dev mode
+- **Vite proxy required:** Client dev server proxies `/ws` to the server port (see `vite.config.js`) — without this, WebSocket connections fail in dev mode
 - **Process kill flow:** SIGTERM first, then SIGKILL after 3s timeout if process doesn't exit
 - **Vite is transpile-only:** Vite does not run `tsc` — type errors won't fail the dev server or build. Run `npm run typecheck` separately
 - **No tests:** Project has no test infrastructure — all testing is manual
