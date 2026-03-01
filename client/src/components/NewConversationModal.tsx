@@ -1,6 +1,6 @@
-import { useState, useRef, useEffect, useCallback, useMemo } from "react";
-import { slugify } from "@shared/types";
 import type { Project } from "@shared/types";
+import { slugify } from "@shared/types";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 interface NewConversationModalProps {
   isOpen: boolean;
@@ -68,16 +68,13 @@ export default function NewConversationModal({
     return () => document.removeEventListener("mousedown", handleClick);
   }, [showDropdown]);
 
-  const selectProject = useCallback(
-    (project: Project) => {
-      setSelectedProject(project);
-      setProjectQuery(project.name);
-      setShowDropdown(false);
-      // Focus name input after selecting project
-      setTimeout(() => nameInputRef.current?.focus(), 50);
-    },
-    []
-  );
+  const selectProject = useCallback((project: Project) => {
+    setSelectedProject(project);
+    setProjectQuery(project.name);
+    setShowDropdown(false);
+    // Focus name input after selecting project
+    setTimeout(() => nameInputRef.current?.focus(), 50);
+  }, []);
 
   const handleSubmit = useCallback(() => {
     if (canSubmit && selectedProject) {
@@ -138,7 +135,9 @@ export default function NewConversationModal({
 
         {/* Project autocomplete */}
         <div className="mb-4">
-          <label htmlFor="project-search" className="block text-sm text-gray-400 mb-1.5">Project</label>
+          <label htmlFor="project-search" className="block text-sm text-gray-400 mb-1.5">
+            Project
+          </label>
           <div className="relative">
             <input
               id="project-search"
@@ -198,7 +197,9 @@ export default function NewConversationModal({
 
         {/* Conversation name */}
         <div className="mb-4">
-          <label htmlFor="conversation-name" className="block text-sm text-gray-400 mb-1.5">Name</label>
+          <label htmlFor="conversation-name" className="block text-sm text-gray-400 mb-1.5">
+            Name
+          </label>
           <input
             id="conversation-name"
             ref={nameInputRef}

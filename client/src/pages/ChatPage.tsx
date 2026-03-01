@@ -1,11 +1,11 @@
 import { useEffect, useRef, useState } from "react";
-import useWebSocket from "../hooks/useWebSocket";
-import useProjects from "../hooks/useProjects";
-import StatusIndicator from "../components/StatusIndicator";
 import ChatMessage from "../components/ChatMessage";
 import InputArea from "../components/InputArea";
-import Sidebar from "../components/Sidebar";
 import NewConversationModal from "../components/NewConversationModal";
+import Sidebar from "../components/Sidebar";
+import StatusIndicator from "../components/StatusIndicator";
+import useProjects from "../hooks/useProjects";
+import useWebSocket from "../hooks/useWebSocket";
 
 export default function ChatPage() {
   const {
@@ -61,6 +61,7 @@ export default function ChatPage() {
             </h1>
             {currentConversation && (
               <button
+                type="button"
                 className="text-xs text-gray-600 hover:text-gray-400 truncate max-w-full text-left transition-colors"
                 title="Click to copy session ID"
                 onClick={() => navigator.clipboard.writeText(currentConversation.id)}

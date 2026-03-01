@@ -1,8 +1,8 @@
-import fs from "fs";
-import path from "path";
-import { fileURLToPath } from "url";
+import fs from "node:fs";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
 import type { Conversation, UIMessage } from "@shared/types.js";
-import { isValidId, atomicWrite, readJson } from "./utils.js";
+import { atomicWrite, isValidId, readJson } from "./utils.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const DATA_DIR = path.join(__dirname, "data");
@@ -55,7 +55,7 @@ function buildIndex(): void {
     if (!entry.isFile() || !entry.name.endsWith(".json")) continue;
     const filePath = path.join(CONVERSATIONS_DIR, entry.name);
     const conv = readJson<Conversation | null>(filePath, null);
-    if (conv && conv.id) {
+    if (conv?.id) {
       conversationIndex.set(conv.id, conv);
     }
   }
@@ -85,7 +85,12 @@ export function getProjectSlugs(projectId: string): string[] {
   return slugs;
 }
 
-export function createConversation(id: string, name: string, slug: string, projectId: string): Conversation {
+export function createConversation(
+  id: string,
+  name: string,
+  slug: string,
+  projectId: string,
+): Conversation {
   if (!isValidConversationId(id)) {
     throw new Error("Invalid conversation ID");
   }

@@ -1,8 +1,8 @@
-import ThinkingBlock from "./ThinkingBlock";
-import TextBlock from "./TextBlock";
-import ToolUseBlock from "./ToolUseBlock";
-import ToolResultBlock from "./ToolResultBlock";
 import ResultSummary from "./ResultSummary";
+import TextBlock from "./TextBlock";
+import ThinkingBlock from "./ThinkingBlock";
+import ToolResultBlock from "./ToolResultBlock";
+import ToolUseBlock from "./ToolUseBlock";
 
 interface EventRendererProps {
   events: Record<string, unknown>[];
@@ -38,7 +38,7 @@ export default function EventRenderer({ events }: EventRendererProps) {
                 key={key}
                 name={block.name}
                 input={(block.input as Record<string, unknown>) ?? {}}
-              />
+              />,
             );
           }
         }
@@ -75,9 +75,7 @@ export default function EventRenderer({ events }: EventRendererProps) {
               stderr = result.stderr;
             }
             if (stdout || stderr) {
-              elements.push(
-                <ToolResultBlock key={`${i}-${j}`} result={{ stdout, stderr }} />
-              );
+              elements.push(<ToolResultBlock key={`${i}-${j}`} result={{ stdout, stderr }} />);
             }
           }
         }
@@ -92,9 +90,8 @@ export default function EventRenderer({ events }: EventRendererProps) {
           key={`${i}-result`}
           durationMs={typeof event.duration_ms === "number" ? event.duration_ms : undefined}
           isError={event.is_error === true}
-        />
+        />,
       );
-      continue;
     }
 
     // Unknown event types are silently skipped

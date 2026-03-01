@@ -20,15 +20,11 @@ function renderInput(name: string, input: Record<string, unknown>) {
   }
 
   if (n === "read" || n === "write" || n === "edit") {
-    return (
-      <p className="text-xs text-gray-300 font-mono">{String(input.file_path ?? "")}</p>
-    );
+    return <p className="text-xs text-gray-300 font-mono">{String(input.file_path ?? "")}</p>;
   }
 
   if (n === "glob" || n === "grep") {
-    return (
-      <p className="text-xs text-gray-300 font-mono">{String(input.pattern ?? "")}</p>
-    );
+    return <p className="text-xs text-gray-300 font-mono">{String(input.pattern ?? "")}</p>;
   }
 
   // Fallback: show key-value pairs

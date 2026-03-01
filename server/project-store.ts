@@ -1,12 +1,12 @@
-import fs from "fs";
-import path from "path";
-import os from "os";
-import crypto from "crypto";
-import { execFileSync } from "child_process";
-import { fileURLToPath } from "url";
-import { PROJECT_COLORS, PORT_INCREMENT } from "@shared/types.js";
+import { execFileSync } from "node:child_process";
+import crypto from "node:crypto";
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
 import type { Project } from "@shared/types.js";
-import { atomicWrite, readJson, isValidId } from "./utils.js";
+import { PORT_INCREMENT, PROJECT_COLORS } from "@shared/types.js";
+import { atomicWrite, isValidId, readJson } from "./utils.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const DATA_DIR = path.join(__dirname, "data");
@@ -63,10 +63,10 @@ function writeClaudeMd(projectPath: string, startPort: number): void {
     if (fs.existsSync(claudeMdPath)) {
       const existing = fs.readFileSync(claudeMdPath, "utf8");
       if (!existing.includes("managed by cc-web")) {
-        atomicWrite(claudeMdPath, existing + "\n\n" + section + "\n");
+        atomicWrite(claudeMdPath, `${existing}\n\n${section}\n`);
       }
     } else {
-      atomicWrite(claudeMdPath, section + "\n");
+      atomicWrite(claudeMdPath, `${section}\n`);
     }
   } catch (err) {
     console.warn(`Could not write CLAUDE.md in "${projectPath}":`, (err as Error).message);
@@ -84,13 +84,17 @@ function scaffoldProject(projectPath: string): void {
     let hasGit = false;
     try {
       execFileSync("git", ["rev-parse", "--is-inside-work-tree"], {
-        cwd: projectPath, timeout: 5000, stdio: "pipe",
+        cwd: projectPath,
+        timeout: 5000,
+        stdio: "pipe",
       });
       hasGit = true;
     } catch {
       try {
         execFileSync("git", ["init"], {
-          cwd: projectPath, timeout: 5000, stdio: "pipe",
+          cwd: projectPath,
+          timeout: 5000,
+          stdio: "pipe",
         });
         hasGit = true;
       } catch (err) {
@@ -126,7 +130,7 @@ function scaffoldProject(projectPath: string): void {
           ],
         },
       };
-      atomicWrite(settingsPath, JSON.stringify(settings, null, 2) + "\n");
+      atomicWrite(settingsPath, `${JSON.stringify(settings, null, 2)}\n`);
     }
 
     // 4. .claudeignore (skip if exists)
@@ -141,7 +145,12 @@ function scaffoldProject(projectPath: string): void {
   }
 }
 
-export function createProject(name: string, projectPath: string, description?: string, color?: string): Project {
+export function createProject(
+  name: string,
+  projectPath: string,
+  description?: string,
+  color?: string,
+): Project {
   const projects = loadProjects();
   const project: Project = {
     id: crypto.randomUUID(),
@@ -159,7 +168,10 @@ export function createProject(name: string, projectPath: string, description?: s
   return project;
 }
 
-export function updateProject(id: string, updates: Partial<Pick<Project, "name" | "path" | "description" | "color">>): Project | undefined {
+export function updateProject(
+  id: string,
+  updates: Partial<Pick<Project, "name" | "path" | "description" | "color">>,
+): Project | undefined {
   if (!isValidId(id)) return undefined;
   const projects = loadProjects();
   const project = projects.find((p) => p.id === id);

@@ -12,14 +12,15 @@ export interface Conversation {
 }
 
 export function slugify(input: string): string {
-  return input
-    .toLowerCase()
-    .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "")
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/^-+|-+$/g, "")
-    .slice(0, 60)
-    || "conversation";
+  return (
+    input
+      .toLowerCase()
+      .normalize("NFD")
+      .replace(/[\u0300-\u036f]/g, "")
+      .replace(/[^a-z0-9]+/g, "-")
+      .replace(/^-+|-+$/g, "")
+      .slice(0, 60) || "conversation"
+  );
 }
 
 export interface Project {
@@ -215,7 +216,12 @@ export function isClientMessage(msg: unknown): msg is ClientMessage {
   const obj = msg as Record<string, unknown>;
   if (obj.type === "kill") return true;
   if (obj.type === "prompt" && typeof obj.text === "string") return true;
-  if (obj.type === "create_conversation" && typeof obj.name === "string" && typeof obj.projectId === "string") return true;
+  if (
+    obj.type === "create_conversation" &&
+    typeof obj.name === "string" &&
+    typeof obj.projectId === "string"
+  )
+    return true;
   if (obj.type === "start" && typeof obj.conversationId === "string") return true;
   if (obj.type === "list_conversations") return true;
   if (obj.type === "delete_conversation" && typeof obj.conversationId === "string") return true;
@@ -223,8 +229,17 @@ export function isClientMessage(msg: unknown): msg is ClientMessage {
 }
 
 const SERVER_MESSAGE_TYPES: ReadonlySet<string> = new Set([
-  "text", "assistant", "result", "system", "error", "stderr", "done",
-  "conversation", "conversation_list", "conversation_deleted", "messages",
+  "text",
+  "assistant",
+  "result",
+  "system",
+  "error",
+  "stderr",
+  "done",
+  "conversation",
+  "conversation_list",
+  "conversation_deleted",
+  "messages",
 ]);
 
 export function isServerMessage(msg: unknown): msg is ServerMessage {

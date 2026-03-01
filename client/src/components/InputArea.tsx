@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect } from "react";
+import { useEffect, useRef, useState } from "react";
 
 interface InputAreaProps {
   onSend: (text: string) => void;
@@ -7,20 +7,14 @@ interface InputAreaProps {
   disabled: boolean;
 }
 
-export default function InputArea({
-  onSend,
-  onStop,
-  isProcessing,
-  disabled,
-}: InputAreaProps) {
+export default function InputArea({ onSend, onStop, isProcessing, disabled }: InputAreaProps) {
   const [text, setText] = useState("");
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
 
   useEffect(() => {
     if (textareaRef.current) {
       textareaRef.current.style.height = "auto";
-      textareaRef.current.style.height =
-        Math.min(textareaRef.current.scrollHeight, 200) + "px";
+      textareaRef.current.style.height = `${Math.min(textareaRef.current.scrollHeight, 200)}px`;
     }
   }, [text]);
 
@@ -54,6 +48,7 @@ export default function InputArea({
         />
         {isProcessing ? (
           <button
+            type="button"
             onClick={onStop}
             className="rounded-xl bg-red-600 px-4 py-3 font-medium text-white hover:bg-red-700 transition-colors"
           >
@@ -61,6 +56,7 @@ export default function InputArea({
           </button>
         ) : (
           <button
+            type="button"
             onClick={handleSubmit}
             disabled={disabled || !text.trim()}
             className="rounded-xl bg-blue-600 px-4 py-3 font-medium text-white hover:bg-blue-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"

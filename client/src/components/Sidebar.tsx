@@ -1,6 +1,6 @@
+import type { Conversation, Project } from "@shared/types";
 import { useMemo } from "react";
 import { Link } from "react-router-dom";
-import type { Conversation, Project } from "@shared/types";
 
 interface SidebarProps {
   conversations: Conversation[];
@@ -52,29 +52,35 @@ export default function Sidebar({
   onFilterProject,
 }: SidebarProps) {
   const sorted = useMemo(
-    () => [...conversations]
-      .filter((c) => !filterProjectId || c.projectId === filterProjectId)
-      .sort((a, b) => new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime()),
-    [conversations, filterProjectId]
+    () =>
+      [...conversations]
+        .filter((c) => !filterProjectId || c.projectId === filterProjectId)
+        .sort((a, b) => new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime()),
+    [conversations, filterProjectId],
   );
 
-  const projectMap = useMemo(
-    () => new Map(projects.map((p) => [p.id, p])),
-    [projects]
-  );
+  const projectMap = useMemo(() => new Map(projects.map((p) => [p.id, p])), [projects]);
   const noProjects = projects.length === 0;
 
   return (
     <div className="flex w-64 flex-col border-r border-gray-800 bg-gray-900">
       <div className="px-3 pt-3 pb-1">
         <h1 className="text-sm font-bold text-gray-100">cc-web</h1>
-        <p className="text-xs text-gray-500" title={`Version ${__APP_VERSION__} (${__GIT_COMMIT__})`}>v{__APP_VERSION__} · {__GIT_COMMIT__}</p>
+        <p
+          className="text-xs text-gray-500"
+          title={`Version ${__APP_VERSION__} (${__GIT_COMMIT__})`}
+        >
+          v{__APP_VERSION__} · {__GIT_COMMIT__}
+        </p>
       </div>
       <div className="p-3 space-y-2">
         {/* Project filter */}
         <div>
-          <label className="block text-xs text-gray-500 mb-1">Filter by project</label>
+          <label htmlFor="project-filter" className="block text-xs text-gray-500 mb-1">
+            Filter by project
+          </label>
           <select
+            id="project-filter"
             value={filterProjectId ?? ""}
             onChange={(e) => onFilterProject(e.target.value || null)}
             disabled={noProjects}
@@ -90,6 +96,7 @@ export default function Sidebar({
         </div>
 
         <button
+          type="button"
           onClick={onNew}
           disabled={noProjects}
           className="flex w-full items-center justify-center gap-2 rounded-lg border border-gray-700 px-3 py-2 text-sm text-gray-300 hover:bg-gray-800 hover:text-gray-100 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
@@ -106,7 +113,15 @@ export default function Sidebar({
           return (
             <div
               key={conv.id}
+              role="button"
+              tabIndex={0}
               onClick={() => onSelect(conv.id)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" || e.key === " ") {
+                  e.preventDefault();
+                  onSelect(conv.id);
+                }
+              }}
               className={`group flex cursor-pointer items-start justify-between gap-2 px-3 py-2.5 transition-colors ${
                 isActive
                   ? "bg-gray-700/60 text-gray-100"
@@ -126,12 +141,11 @@ export default function Sidebar({
                       <span className="text-xs text-gray-600">&middot;</span>
                     </>
                   )}
-                  <span className="text-xs text-gray-500">
-                    {formatTimestamp(conv.updated_at)}
-                  </span>
+                  <span className="text-xs text-gray-500">{formatTimestamp(conv.updated_at)}</span>
                 </div>
               </div>
               <button
+                type="button"
                 onClick={(e) => {
                   e.stopPropagation();
                   if (window.confirm("Delete this conversation?")) {
@@ -142,6 +156,7 @@ export default function Sidebar({
                 title="Delete conversation"
               >
                 <svg
+                  aria-hidden="true"
                   xmlns="http://www.w3.org/2000/svg"
                   viewBox="0 0 20 20"
                   fill="currentColor"

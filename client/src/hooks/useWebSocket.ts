@@ -1,11 +1,6 @@
-import { useState, useEffect, useRef, useCallback } from "react";
+import type { ConnectionStatus, Conversation, ServerMessage, UIMessage } from "@shared/types";
 import { isServerMessage } from "@shared/types";
-import type {
-  UIMessage,
-  ConnectionStatus,
-  ServerMessage,
-  Conversation,
-} from "@shared/types";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { filterEvent } from "../utils/filterEvent";
 
 let nextMessageId = 0;
@@ -34,8 +29,7 @@ export default function useWebSocket(): UseWebSocketReturn {
   const [status, setStatus] = useState<ConnectionStatus>("disconnected");
   const [messages, setMessages] = useState<UIMessage[]>([]);
   const [isProcessing, setIsProcessing] = useState(false);
-  const [currentConversation, setCurrentConversation] =
-    useState<Conversation | null>(null);
+  const [currentConversation, setCurrentConversation] = useState<Conversation | null>(null);
   const [conversations, setConversations] = useState<Conversation[]>([]);
 
   const wsRef = useRef<WebSocket | null>(null);
@@ -113,10 +107,7 @@ export default function useWebSocket(): UseWebSocketReturn {
           setMessages((prev) => {
             const last = prev[prev.length - 1];
             if (last?.type === "assistant" && last.streaming) {
-              return [
-                ...prev.slice(0, -1),
-                { ...last, content: streamingTextRef.current },
-              ];
+              return [...prev.slice(0, -1), { ...last, content: streamingTextRef.current }];
             }
             return prev;
           });
@@ -155,18 +146,12 @@ export default function useWebSocket(): UseWebSocketReturn {
 
         case "result":
           if (discard) break;
-          setMessages((prev) => [
-            ...prev,
-            { id: createId(), type: "result", data: msg.data },
-          ]);
+          setMessages((prev) => [...prev, { id: createId(), type: "result", data: msg.data }]);
           break;
 
         case "system":
           if (discard) break;
-          setMessages((prev) => [
-            ...prev,
-            { id: createId(), type: "system", data: msg.data },
-          ]);
+          setMessages((prev) => [...prev, { id: createId(), type: "system", data: msg.data }]);
           break;
 
         case "stderr":
@@ -178,17 +163,14 @@ export default function useWebSocket(): UseWebSocketReturn {
           streamingTextRef.current = "";
           setMessages((prev) =>
             prev.map((m) =>
-              m.type === "assistant" && m.streaming ? { ...m, streaming: false } : m
-            )
+              m.type === "assistant" && m.streaming ? { ...m, streaming: false } : m,
+            ),
           );
           break;
 
         case "error":
           if (discard) break;
-          setMessages((prev) => [
-            ...prev,
-            { id: createId(), type: "error", content: msg.data },
-          ]);
+          setMessages((prev) => [...prev, { id: createId(), type: "error", content: msg.data }]);
           setIsProcessing(false);
           streamingTextRef.current = "";
           break;
@@ -202,9 +184,7 @@ export default function useWebSocket(): UseWebSocketReturn {
           break;
 
         case "conversation_deleted":
-          setConversations((prev) =>
-            prev.filter((c) => c.id !== msg.conversationId)
-          );
+          setConversations((prev) => prev.filter((c) => c.id !== msg.conversationId));
           // If another tab deleted our current conversation, reset
           setCurrentConversation((prev) => {
             if (prev?.id === msg.conversationId) {
@@ -219,13 +199,17 @@ export default function useWebSocket(): UseWebSocketReturn {
         case "messages":
           // Receiving replayed messages means we've loaded a conversation
           discardStreamRef.current = false;
-          setMessages(msg.messages.map((m) => {
-            if (m.type === "assistant" && m.rawEvents) {
-              const filtered = m.rawEvents.map(filterEvent).filter((e): e is Record<string, unknown> => e !== null);
-              return { ...m, rawEvents: filtered };
-            }
-            return m;
-          }));
+          setMessages(
+            msg.messages.map((m) => {
+              if (m.type === "assistant" && m.rawEvents) {
+                const filtered = m.rawEvents
+                  .map(filterEvent)
+                  .filter((e): e is Record<string, unknown> => e !== null);
+                return { ...m, rawEvents: filtered };
+              }
+              return m;
+            }),
+          );
           break;
 
         default:
@@ -240,10 +224,7 @@ export default function useWebSocket(): UseWebSocketReturn {
 
       // Auto-reconnect with exponential backoff
       reconnectTimer.current = setTimeout(() => {
-        reconnectDelay.current = Math.min(
-          reconnectDelay.current * 2,
-          RECONNECT_MAX
-        );
+        reconnectDelay.current = Math.min(reconnectDelay.current * 2, RECONNECT_MAX);
         connect();
       }, reconnectDelay.current);
     };
@@ -251,9 +232,9 @@ export default function useWebSocket(): UseWebSocketReturn {
     ws.onerror = () => {
       // onclose will fire after onerror
     };
-  // Deps: getWsUrl is the only unstable dep. State setters from useState are
-  // stable. Refs (streamingTextRef, discardStreamRef, etc.) are mutable objects
-  // and intentionally not listed — their .current is read at call time.
+    // Deps: getWsUrl is the only unstable dep. State setters from useState are
+    // stable. Refs (streamingTextRef, discardStreamRef, etc.) are mutable objects
+    // and intentionally not listed — their .current is read at call time.
   }, [getWsUrl]);
 
   useEffect(() => {
@@ -273,32 +254,27 @@ export default function useWebSocket(): UseWebSocketReturn {
     isProcessingRef.current = isProcessing;
   }, [isProcessing]);
 
-  const sendPrompt = useCallback(
-    (text: string) => {
-      if (!wsRef.current || wsRef.current.readyState !== WebSocket.OPEN) return;
-      if (isProcessingRef.current) return;
+  const sendPrompt = useCallback((text: string) => {
+    if (!wsRef.current || wsRef.current.readyState !== WebSocket.OPEN) return;
+    if (isProcessingRef.current) return;
 
-      discardStreamRef.current = false;
-      streamingTextRef.current = "";
-      setIsProcessing(true);
-      setMessages((prev) => [
-        ...prev,
-        { id: createId(), type: "user", content: text },
-        { id: createId(), type: "assistant", content: "", streaming: true },
-      ]);
-      wsRef.current.send(JSON.stringify({ type: "prompt", text }));
-    },
-    []
-  );
+    discardStreamRef.current = false;
+    streamingTextRef.current = "";
+    setIsProcessing(true);
+    setMessages((prev) => [
+      ...prev,
+      { id: createId(), type: "user", content: text },
+      { id: createId(), type: "assistant", content: "", streaming: true },
+    ]);
+    wsRef.current.send(JSON.stringify({ type: "prompt", text }));
+  }, []);
 
   const killProcess = useCallback(() => {
     wsSend({ type: "kill" });
     setIsProcessing(false);
     streamingTextRef.current = "";
     setMessages((prev) =>
-      prev.map((m) =>
-        m.type === "assistant" && m.streaming ? { ...m, streaming: false } : m
-      )
+      prev.map((m) => (m.type === "assistant" && m.streaming ? { ...m, streaming: false } : m)),
     );
   }, [wsSend]);
 
@@ -312,7 +288,7 @@ export default function useWebSocket(): UseWebSocketReturn {
       setCurrentConversation(null);
       wsSend({ type: "create_conversation", name, projectId });
     },
-    [wsSend]
+    [wsSend],
   );
 
   const startConversation = useCallback(
@@ -324,7 +300,7 @@ export default function useWebSocket(): UseWebSocketReturn {
       setMessages([]);
       wsSend({ type: "start", conversationId });
     },
-    [wsSend]
+    [wsSend],
   );
 
   const deleteConversation = useCallback(
@@ -340,7 +316,7 @@ export default function useWebSocket(): UseWebSocketReturn {
         return prev;
       });
     },
-    [wsSend]
+    [wsSend],
   );
 
   return {

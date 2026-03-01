@@ -13,6 +13,8 @@ npm run dev:client   # Client only (port 5173)
 
 Typecheck: `cd server && npm run typecheck` / `cd client && npm run typecheck`
 
+Lint: `npm run lint` (check) / `npm run lint:fix` (auto-fix) / `npm run format` (format only)
+
 Client build: `cd client && npm run build`
 
 ## Architecture
@@ -48,7 +50,7 @@ Each conversation gets a UUID. The Claude CLI is invoked with `--session-id <uui
 
 ## Code Style
 
-- TypeScript with `strict: true`, no linter/formatter configured
+- TypeScript with `strict: true`, Biome for linting + formatting (config at root `biome.json`)
 - Client: functional components with hooks, Tailwind utility classes, prop interfaces on all components
 - Server: index.ts (WebSocket/process management) + store.ts (persistence), ES module imports
 - Components are small and focused; WebSocket logic lives in `useWebSocket` custom hook

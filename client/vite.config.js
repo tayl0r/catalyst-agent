@@ -1,10 +1,12 @@
-import { defineConfig } from "vite";
+import { execFileSync } from "node:child_process";
+import fs from "node:fs";
+import path from "node:path";
 import react from "@vitejs/plugin-react";
-import path from "path";
-import fs from "fs";
-import { execFileSync } from "child_process";
+import { defineConfig } from "vite";
 
-const version = JSON.parse(fs.readFileSync(path.resolve(__dirname, "../version.json"), "utf8")).version;
+const version = JSON.parse(
+  fs.readFileSync(path.resolve(__dirname, "../version.json"), "utf8"),
+).version;
 let commit = "unknown";
 try {
   commit = execFileSync("git", ["rev-parse", "--short", "HEAD"]).toString().trim();

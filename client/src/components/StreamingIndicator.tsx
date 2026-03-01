@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 
 function formatTime(seconds: number): string {
   const m = Math.floor(seconds / 60);
@@ -19,7 +19,14 @@ export default function StreamingIndicator() {
 
   return (
     <div className="flex items-center gap-1.5 text-gray-400 text-xs mt-1">
-      <svg className="w-3 h-3" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5">
+      <svg
+        className="w-3 h-3"
+        viewBox="0 0 16 16"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.5"
+        aria-hidden="true"
+      >
         <circle cx="8" cy="8" r="6.5" />
         <path d="M8 4.5V8L10.5 9.5" strokeLinecap="round" strokeLinejoin="round" />
       </svg>

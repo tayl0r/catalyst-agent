@@ -1,5 +1,5 @@
-import fs from "fs";
-import crypto from "crypto";
+import crypto from "node:crypto";
+import fs from "node:fs";
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 

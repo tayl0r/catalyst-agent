@@ -1,7 +1,14 @@
 /**
  * Keys to strip from all objects at any depth.
  */
-const GLOBALLY_STRIPPED_KEYS = new Set(["tool_use_id", "usage", "modelUsage", "total_cost_usd", "fast_mode_state", "noOutputExpected"]);
+const GLOBALLY_STRIPPED_KEYS = new Set([
+  "tool_use_id",
+  "usage",
+  "modelUsage",
+  "total_cost_usd",
+  "fast_mode_state",
+  "noOutputExpected",
+]);
 
 /**
  * Recursively removes null values and globally-stripped keys from an object/array.
@@ -60,9 +67,7 @@ const CONTENT_BLOCK_DENY = new Set(["signature"]);
 /**
  * Filters a single NDJSON event. Returns null if the event should be dropped.
  */
-export function filterEvent(
-  raw: Record<string, unknown>,
-): Record<string, unknown> | null {
+export function filterEvent(raw: Record<string, unknown>): Record<string, unknown> | null {
   // Drop ignored events
   for (const ignored of IGNORED_EVENTS) {
     if (raw.type === ignored.type && (!ignored.subtype || raw.subtype === ignored.subtype)) {

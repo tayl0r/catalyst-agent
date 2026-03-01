@@ -1,13 +1,20 @@
-import { useState, useEffect, useCallback } from "react";
 import type { Project } from "@shared/types";
+import { useCallback, useEffect, useState } from "react";
 
 interface UseProjectsReturn {
   projects: Project[];
   loading: boolean;
   error: string | null;
   refresh: () => void;
-  createProject: (data: { name: string; description?: string; color?: string }) => Promise<Project | null>;
-  updateProject: (id: string, data: Partial<Pick<Project, "name" | "path" | "description" | "color">>) => Promise<Project | null>;
+  createProject: (data: {
+    name: string;
+    description?: string;
+    color?: string;
+  }) => Promise<Project | null>;
+  updateProject: (
+    id: string,
+    data: Partial<Pick<Project, "name" | "path" | "description" | "color">>,
+  ) => Promise<Project | null>;
   deleteProject: (id: string) => Promise<boolean>;
 }
 
@@ -39,7 +46,11 @@ export default function useProjects(): UseProjectsReturn {
   }, [refresh]);
 
   const createProjectFn = useCallback(
-    async (data: { name: string; description?: string; color?: string }): Promise<Project | null> => {
+    async (data: {
+      name: string;
+      description?: string;
+      color?: string;
+    }): Promise<Project | null> => {
       try {
         const res = await fetch("/api/projects", {
           method: "POST",
@@ -60,11 +71,14 @@ export default function useProjects(): UseProjectsReturn {
         return null;
       }
     },
-    []
+    [],
   );
 
   const updateProjectFn = useCallback(
-    async (id: string, data: Partial<Pick<Project, "name" | "path" | "description" | "color">>): Promise<Project | null> => {
+    async (
+      id: string,
+      data: Partial<Pick<Project, "name" | "path" | "description" | "color">>,
+    ): Promise<Project | null> => {
       try {
         const res = await fetch(`/api/projects/${id}`, {
           method: "PUT",
@@ -85,28 +99,25 @@ export default function useProjects(): UseProjectsReturn {
         return null;
       }
     },
-    []
+    [],
   );
 
-  const deleteProjectFn = useCallback(
-    async (id: string): Promise<boolean> => {
-      try {
-        const res = await fetch(`/api/projects/${id}`, { method: "DELETE" });
-        if (!res.ok) {
-          const body = await res.json();
-          setError(body.error || `HTTP ${res.status}`);
-          return false;
-        }
-        setProjects((prev) => prev.filter((p) => p.id !== id));
-        setError(null);
-        return true;
-      } catch (err) {
-        setError((err as Error).message);
+  const deleteProjectFn = useCallback(async (id: string): Promise<boolean> => {
+    try {
+      const res = await fetch(`/api/projects/${id}`, { method: "DELETE" });
+      if (!res.ok) {
+        const body = await res.json();
+        setError(body.error || `HTTP ${res.status}`);
         return false;
       }
-    },
-    []
-  );
+      setProjects((prev) => prev.filter((p) => p.id !== id));
+      setError(null);
+      return true;
+    } catch (err) {
+      setError((err as Error).message);
+      return false;
+    }
+  }, []);
 
   return {
     projects,

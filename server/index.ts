@@ -1,39 +1,41 @@
-import dotenv from "dotenv";
-import path from "path";
-import fs from "fs";
-import { fileURLToPath } from "url";
-import express from "express";
-import http from "http";
-import crypto from "crypto";
-import { WebSocketServer, WebSocket } from "ws";
-import { spawn, ChildProcess } from "child_process";
+import { type ChildProcess, spawn } from "node:child_process";
+import crypto from "node:crypto";
+import fs from "node:fs";
+import http from "node:http";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
+import type { ResultData, ServerMessage, UIMessage } from "@shared/types.js";
 import { isClientMessage, slugify } from "@shared/types.js";
-import type { ServerMessage, ResultData, UIMessage } from "@shared/types.js";
+import dotenv from "dotenv";
+import express from "express";
+import { WebSocket, WebSocketServer } from "ws";
 import {
-  isValidConversationId,
-  loadConversations,
+  createProject,
+  deleteProject,
+  expandTilde,
+  getProject,
+  getProjectPath,
+  loadProjects,
+  populateFromDirectory,
+  updateProject,
+} from "./project-store.js";
+import {
+  appendMessage,
+  createConversation,
+  deleteConversation as deleteConv,
   getConversation,
   getProjectSlugs,
-  createConversation,
-  touchConversation,
-  setWorktreeCwd,
-  deleteConversation as deleteConv,
+  isValidConversationId,
+  loadConversations,
   loadMessages,
-  appendMessage,
+  setWorktreeCwd,
+  touchConversation,
 } from "./store.js";
-import {
-  loadProjects,
-  getProject,
-  createProject,
-  updateProject,
-  deleteProject,
-  populateFromDirectory,
-  getProjectPath,
-  expandTilde,
-} from "./project-store.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-dotenv.config({ path: [path.resolve(__dirname, "../.env.local"), path.resolve(__dirname, "../.env")] });
+dotenv.config({
+  path: [path.resolve(__dirname, "../.env.local"), path.resolve(__dirname, "../.env")],
+});
 
 function stripNullValues(obj: unknown): unknown {
   if (obj === null) return undefined;
@@ -161,7 +163,9 @@ app.delete("/api/projects/:id", (req, res) => {
   }
   const convs = loadConversations().filter((c) => c.projectId === id);
   if (convs.length > 0) {
-    res.status(409).json({ error: `Cannot delete: ${convs.length} conversation(s) reference this project` });
+    res
+      .status(409)
+      .json({ error: `Cannot delete: ${convs.length} conversation(s) reference this project` });
     return;
   }
   deleteProject(id);
@@ -377,7 +381,7 @@ wss.on("connection", (ws: WebSocket) => {
 
     // Resolve cwd: use worktree path when resuming, otherwise project root
     const projectPath = pendingProjectId ? getProjectPath(pendingProjectId) : undefined;
-    const spawnCwd = (!isFirstPrompt && conv.worktreeCwd) ? conv.worktreeCwd : projectPath;
+    const spawnCwd = !isFirstPrompt && conv.worktreeCwd ? conv.worktreeCwd : projectPath;
     if (spawnCwd && !fs.existsSync(spawnCwd)) {
       send({ type: "error", data: `Directory does not exist: ${spawnCwd}` });
       return;
@@ -391,8 +395,12 @@ wss.on("connection", (ws: WebSocket) => {
     // Using --session-id on an existing session fails with "already in use".
     const sessionFlag = isFirstPrompt ? "--session-id" : "--resume";
     const args = [
-      sessionFlag, currentConversationId,
-      "-p", "--output-format", "stream-json", "--verbose",
+      sessionFlag,
+      currentConversationId,
+      "-p",
+      "--output-format",
+      "stream-json",
+      "--verbose",
     ];
     // -w creates a git worktree on the first prompt. On --resume, we set
     // cwd to the worktree path stored from the init event.
@@ -403,9 +411,13 @@ wss.on("connection", (ws: WebSocket) => {
 
     const project = pendingProjectId ? getProject(pendingProjectId) : null;
     if (isFirstPrompt) {
-      console.log(`SESSION: [new] project="${project?.name ?? "unknown"}" convo="${conv.name}" session=${currentConversationId}`);
+      console.log(
+        `SESSION: [new] project="${project?.name ?? "unknown"}" convo="${conv.name}" session=${currentConversationId}`,
+      );
     }
-    console.log(`USER: ${isFirstPrompt ? "[new session]" : "[resume]"} project="${project?.name ?? "unknown"}" convo="${conv.name}" session=${currentConversationId} text=${JSON.stringify(parsed.text.length > 200 ? parsed.text.slice(0, 200) + "..." : parsed.text)}`);
+    console.log(
+      `USER: ${isFirstPrompt ? "[new session]" : "[resume]"} project="${project?.name ?? "unknown"}" convo="${conv.name}" session=${currentConversationId} text=${JSON.stringify(parsed.text.length > 200 ? `${parsed.text.slice(0, 200)}...` : parsed.text)}`,
+    );
 
     isFirstPrompt = false;
 
@@ -420,12 +432,17 @@ wss.on("connection", (ws: WebSocket) => {
     });
 
     activeProcess = child;
-    console.log(`PROCESS: [start] pid=${child.pid} cmd="claude ${args.slice(0, -1).join(" ")}" cwd=${spawnCwd || "none"} project="${logProjectName}" convo="${logConvName}" session=${convId}`);
+    console.log(
+      `PROCESS: [start] pid=${child.pid} cmd="claude ${args.slice(0, -1).join(" ")}" cwd=${spawnCwd || "none"} project="${logProjectName}" convo="${logConvName}" session=${convId}`,
+    );
 
     // Per-prompt streaming context — not shared across prompts.
     // Each spawn gets its own accumulator so conversation switches
     // can't corrupt another prompt's stored text.
-    const ctx: { streamingText: string; rawEvents: Record<string, unknown>[] } = { streamingText: "", rawEvents: [] };
+    const ctx: { streamingText: string; rawEvents: Record<string, unknown>[] } = {
+      streamingText: "",
+      rawEvents: [],
+    };
     const onInitCwd = (cwd: string) => {
       if (convId) {
         console.log(`PROCESS: [init] pid=${child.pid} cwd=${cwd} session=${convId}`);
@@ -440,7 +457,9 @@ wss.on("connection", (ws: WebSocket) => {
       return;
     }
 
-    stdin.on("error", () => { /* ignore EPIPE — child may not read stdin */ });
+    stdin.on("error", () => {
+      /* ignore EPIPE — child may not read stdin */
+    });
     stdin.end();
 
     let buffer = "";
@@ -475,7 +494,9 @@ wss.on("connection", (ws: WebSocket) => {
     });
 
     child.on("error", (err: Error) => {
-      console.error(`ERROR: project="${logProjectName}" convo="${logConvName}" session=${convId} error=${JSON.stringify(err.message)}`);
+      console.error(
+        `ERROR: project="${logProjectName}" convo="${logConvName}" session=${convId} error=${JSON.stringify(err.message)}`,
+      );
       if (activeProcess === child) {
         send({ type: "error", data: err.message });
       }
@@ -483,7 +504,9 @@ wss.on("connection", (ws: WebSocket) => {
     });
 
     child.on("close", (code: number | null) => {
-      console.log(`PROCESS: [exit] pid=${child.pid} exitCode=${code} project="${logProjectName}" convo="${logConvName}" session=${convId}`);
+      console.log(
+        `PROCESS: [exit] pid=${child.pid} exitCode=${code} project="${logProjectName}" convo="${logConvName}" session=${convId}`,
+      );
       const isActive = activeProcess === child;
 
       // Only flush buffer and send done if still the active process
@@ -506,11 +529,18 @@ wss.on("connection", (ws: WebSocket) => {
       // Always store accumulated text (even from killed processes)
       if (!ctx.streamingText && isActive) {
         // Only log no-response for processes that weren't intentionally killed
-        console.log(`AGENT: [no response] project="${logProjectName}" convo="${logConvName}" session=${convId} exitCode=${code}`);
+        console.log(
+          `AGENT: [no response] project="${logProjectName}" convo="${logConvName}" session=${convId} exitCode=${code}`,
+        );
       }
       if (ctx.streamingText && convId) {
-        const responsePreview = ctx.streamingText.length > 200 ? ctx.streamingText.slice(0, 200) + "..." : ctx.streamingText;
-        console.log(`AGENT: project="${logProjectName}" convo="${logConvName}" session=${convId} text=${JSON.stringify(responsePreview)}`);
+        const responsePreview =
+          ctx.streamingText.length > 200
+            ? `${ctx.streamingText.slice(0, 200)}...`
+            : ctx.streamingText;
+        console.log(
+          `AGENT: project="${logProjectName}" convo="${logConvName}" session=${convId} text=${JSON.stringify(responsePreview)}`,
+        );
         const assistantMsg: UIMessage = {
           id: crypto.randomUUID(),
           type: "assistant",
@@ -559,7 +589,11 @@ function handleNdjsonEvent(
       const content = msg?.content;
       if (Array.isArray(content)) {
         for (const block of content) {
-          if (typeof block === "object" && block !== null && (block as Record<string, unknown>).type === "text") {
+          if (
+            typeof block === "object" &&
+            block !== null &&
+            (block as Record<string, unknown>).type === "text"
+          ) {
             const text = (block as Record<string, unknown>).text;
             if (typeof text === "string") {
               ctx.streamingText += text;

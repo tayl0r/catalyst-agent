@@ -9,9 +9,13 @@
     "dev:server": "npm run dev --prefix server",
     "dev:client": "npm run dev --prefix client",
     "typecheck": "npm run typecheck --prefix server && npm run typecheck --prefix client",
+    "lint": "biome check .",
+    "lint:fix": "biome check --write .",
+    "format": "biome format --write .",
     "prepare": "sh scripts/install-hooks.sh"
   },
   "devDependencies": {
+    "@biomejs/biome": "2.4.4",
     "concurrently": "^9.1.2"
   }
 }
