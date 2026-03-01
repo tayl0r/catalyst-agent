@@ -179,6 +179,7 @@ export interface AssistantUIMessage extends BaseUIMessage {
   type: "assistant";
   content: string;
   streaming: boolean;
+  rawEvents?: Record<string, unknown>[];
 }
 
 export interface ErrorUIMessage extends BaseUIMessage {

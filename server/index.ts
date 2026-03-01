@@ -35,7 +35,25 @@ import {
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 dotenv.config({ path: [path.resolve(__dirname, "../.env.local"), path.resolve(__dirname, "../.env")] });
 
-const PORT = process.env.PORT || 2999;
+function stripNullValues(obj: unknown): unknown {
+  if (obj === null) return undefined;
+  if (Array.isArray(obj)) {
+    return obj.map(stripNullValues).filter((v) => v !== undefined);
+  }
+  if (typeof obj === "object") {
+    const result: Record<string, unknown> = {};
+    for (const [key, value] of Object.entries(obj as Record<string, unknown>)) {
+      const stripped = stripNullValues(value);
+      if (stripped !== undefined) {
+        result[key] = stripped;
+      }
+    }
+    return result;
+  }
+  return obj;
+}
+
+const PORT = process.env.PORT || 3001;
 const MAX_CONNECTIONS = 10;
 
 const app = express();
@@ -407,7 +425,7 @@ wss.on("connection", (ws: WebSocket) => {
     // Per-prompt streaming context — not shared across prompts.
     // Each spawn gets its own accumulator so conversation switches
     // can't corrupt another prompt's stored text.
-    const ctx = { streamingText: "" };
+    const ctx: { streamingText: string; rawEvents: Record<string, unknown>[] } = { streamingText: "", rawEvents: [] };
     const onInitCwd = (cwd: string) => {
       if (convId) {
         console.log(`PROCESS: [init] pid=${child.pid} cwd=${cwd} session=${convId}`);
@@ -498,6 +516,7 @@ wss.on("connection", (ws: WebSocket) => {
           type: "assistant",
           content: ctx.streamingText,
           streaming: false,
+          ...(ctx.rawEvents.length > 0 && { rawEvents: ctx.rawEvents }),
         };
         appendMessage(convId, assistantMsg);
         touchConversation(convId);
@@ -515,9 +534,12 @@ wss.on("connection", (ws: WebSocket) => {
 function handleNdjsonEvent(
   event: Record<string, unknown>,
   sendFn: (obj: ServerMessage) => void,
-  ctx: { streamingText: string },
+  ctx: { streamingText: string; rawEvents: Record<string, unknown>[] },
   onInitCwd?: (cwd: string) => void,
 ): void {
+  // Store every event (null-stripped) for persistence
+  ctx.rawEvents.push(stripNullValues(event) as Record<string, unknown>);
+
   if (event.type === "content_block_delta") {
     const delta = event.delta;
     if (typeof delta !== "object" || delta === null) return;
@@ -546,7 +568,7 @@ function handleNdjsonEvent(
         }
       }
     }
-    sendFn({ type: "assistant", data: event });
+    sendFn({ type: "assistant", data: stripNullValues(event) as Record<string, unknown> });
     return;
   }
 

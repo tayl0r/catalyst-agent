@@ -6,6 +6,7 @@ import type {
   ServerMessage,
   Conversation,
 } from "@shared/types";
+import { filterEvent } from "../utils/filterEvent";
 
 let nextMessageId = 0;
 
@@ -121,17 +122,20 @@ export default function useWebSocket(): UseWebSocketReturn {
           });
           break;
 
-        case "assistant":
+        case "assistant": {
           if (discard) break;
+          const filtered = filterEvent(msg.data as Record<string, unknown>);
+          if (!filtered) break;
           setMessages((prev) => {
             const last = prev[prev.length - 1];
             if (last?.type === "assistant" && last.streaming) {
+              const existing = last.rawEvents ?? [];
               return [
                 ...prev.slice(0, -1),
                 {
                   ...last,
                   content: streamingTextRef.current,
-                  streaming: false,
+                  rawEvents: [...existing, filtered],
                 },
               ];
             }
@@ -139,13 +143,15 @@ export default function useWebSocket(): UseWebSocketReturn {
               ...prev,
               {
                 id: createId(),
-                type: "assistant",
-                content: streamingTextRef.current || JSON.stringify(msg.data),
-                streaming: false,
+                type: "assistant" as const,
+                content: streamingTextRef.current || JSON.stringify(filtered),
+                streaming: true,
+                rawEvents: [filtered],
               },
             ];
           });
           break;
+        }
 
         case "result":
           if (discard) break;
@@ -170,6 +176,11 @@ export default function useWebSocket(): UseWebSocketReturn {
           if (discard) break;
           setIsProcessing(false);
           streamingTextRef.current = "";
+          setMessages((prev) =>
+            prev.map((m) =>
+              m.type === "assistant" && m.streaming ? { ...m, streaming: false } : m
+            )
+          );
           break;
 
         case "error":
@@ -208,7 +219,13 @@ export default function useWebSocket(): UseWebSocketReturn {
         case "messages":
           // Receiving replayed messages means we've loaded a conversation
           discardStreamRef.current = false;
-          setMessages(msg.messages);
+          setMessages(msg.messages.map((m) => {
+            if (m.type === "assistant" && m.rawEvents) {
+              const filtered = m.rawEvents.map(filterEvent).filter((e): e is Record<string, unknown> => e !== null);
+              return { ...m, rawEvents: filtered };
+            }
+            return m;
+          }));
           break;
 
         default:
@@ -276,6 +293,13 @@ export default function useWebSocket(): UseWebSocketReturn {
 
   const killProcess = useCallback(() => {
     wsSend({ type: "kill" });
+    setIsProcessing(false);
+    streamingTextRef.current = "";
+    setMessages((prev) =>
+      prev.map((m) =>
+        m.type === "assistant" && m.streaming ? { ...m, streaming: false } : m
+      )
+    );
   }, [wsSend]);
 
   const createConversation = useCallback(

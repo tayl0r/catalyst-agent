@@ -1,6 +1,8 @@
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import type { UIMessage } from "@shared/types";
+import EventRenderer from "./events/EventRenderer";
+import StreamingIndicator from "./StreamingIndicator";
 
 interface ChatMessageProps {
   message: UIMessage;
@@ -21,14 +23,16 @@ export default function ChatMessage({ message }: ChatMessageProps) {
     return (
       <div className="flex justify-start">
         <div className="max-w-[80%] rounded-2xl rounded-bl-md bg-gray-800 px-4 py-2.5">
-          <div className="prose prose-invert prose-sm max-w-none">
-            <ReactMarkdown remarkPlugins={[remarkGfm]}>
-              {message.content}
-            </ReactMarkdown>
-          </div>
-          {message.streaming && (
-            <span className="inline-block h-4 w-1.5 animate-pulse bg-gray-400 ml-0.5" />
-          )}
+          {message.rawEvents?.length ? (
+            <EventRenderer events={message.rawEvents} />
+          ) : message.content ? (
+            <div className="prose prose-invert prose-sm max-w-none">
+              <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                {message.content}
+              </ReactMarkdown>
+            </div>
+          ) : null}
+          {message.streaming && <StreamingIndicator />}
         </div>
       </div>
     );
@@ -47,16 +51,11 @@ export default function ChatMessage({ message }: ChatMessageProps) {
   if (message.type === "result") {
     const { data } = message;
     const cost = data.cost_usd != null ? `$${data.cost_usd.toFixed(4)}` : null;
-    const inputTokens = data.usage?.input_tokens;
-    const outputTokens = data.usage?.output_tokens;
+    if (!cost) return null;
 
     return (
       <div className="flex justify-center">
-        <div className="text-xs text-gray-500 flex gap-3">
-          {cost && <span>{cost}</span>}
-          {inputTokens != null && <span>{inputTokens.toLocaleString()} in</span>}
-          {outputTokens != null && <span>{outputTokens.toLocaleString()} out</span>}
-        </div>
+        <span className="text-xs text-gray-500">{cost}</span>
       </div>
     );
   }
