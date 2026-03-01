@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import ChatMessage from "../components/ChatMessage";
 import InputArea from "../components/InputArea";
@@ -23,6 +23,10 @@ export default function ChatPage() {
   } = useWebSocket();
 
   const { projects } = useProjects();
+  const currentProject = useMemo(
+    () => projects.find((p) => p.id === currentConversation?.projectId),
+    [projects, currentConversation?.projectId],
+  );
   const location = useLocation();
   const navigate = useNavigate();
   const [filterProjectId, setFilterProjectId] = useState<string | null>(null);
@@ -76,14 +80,30 @@ export default function ChatPage() {
               {currentConversation?.name ?? "New conversation"}
             </h1>
             {currentConversation && (
-              <button
-                type="button"
-                className="text-xs text-gray-600 hover:text-gray-400 truncate max-w-full text-left transition-colors"
-                title="Click to copy session ID"
-                onClick={() => navigator.clipboard.writeText(currentConversation.id)}
-              >
-                {currentConversation.id}
-              </button>
+              <div className="flex items-center gap-2 text-xs text-gray-500 truncate">
+                {currentProject && (
+                  <span className="flex items-center gap-1 shrink-0">
+                    <span
+                      className="inline-block h-2 w-2 rounded-full"
+                      style={{ backgroundColor: currentProject.color }}
+                    />
+                    <span>{currentProject.name}</span>
+                  </span>
+                )}
+                {currentProject && currentConversation.slug && (
+                  <span className="text-gray-700">/</span>
+                )}
+                {currentConversation.slug && (
+                  <button
+                    type="button"
+                    className="text-gray-400 hover:text-gray-300 truncate transition-colors"
+                    title="Click to copy branch name"
+                    onClick={() => navigator.clipboard.writeText(currentConversation.slug)}
+                  >
+                    {currentConversation.slug}
+                  </button>
+                )}
+              </div>
             )}
           </div>
           <StatusIndicator status={status} />
