@@ -2,10 +2,23 @@
 
 export interface Conversation {
   id: string;
-  title: string;
+  name: string;
+  slug: string;
+  title: string; // kept for compat, set equal to name
   projectId: string;
   created_at: string;
   updated_at: string;
+}
+
+export function slugify(input: string): string {
+  return input
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, 60)
+    || "conversation";
 }
 
 export interface Project {
@@ -40,10 +53,15 @@ export interface KillMessage {
   type: "kill";
 }
 
+export interface CreateConversationMessage {
+  type: "create_conversation";
+  name: string;
+  projectId: string;
+}
+
 export interface StartMessage {
   type: "start";
-  conversationId?: string;
-  projectId?: string;
+  conversationId: string;
 }
 
 export interface ListConversationsMessage {
@@ -58,6 +76,7 @@ export interface DeleteConversationMessage {
 export type ClientMessage =
   | PromptMessage
   | KillMessage
+  | CreateConversationMessage
   | StartMessage
   | ListConversationsMessage
   | DeleteConversationMessage;
@@ -191,11 +210,8 @@ export function isClientMessage(msg: unknown): msg is ClientMessage {
   const obj = msg as Record<string, unknown>;
   if (obj.type === "kill") return true;
   if (obj.type === "prompt" && typeof obj.text === "string") return true;
-  if (obj.type === "start") {
-    if (obj.conversationId !== undefined && typeof obj.conversationId !== "string") return false;
-    if (obj.projectId !== undefined && typeof obj.projectId !== "string") return false;
-    return true;
-  }
+  if (obj.type === "create_conversation" && typeof obj.name === "string" && typeof obj.projectId === "string") return true;
+  if (obj.type === "start" && typeof obj.conversationId === "string") return true;
   if (obj.type === "list_conversations") return true;
   if (obj.type === "delete_conversation" && typeof obj.conversationId === "string") return true;
   return false;

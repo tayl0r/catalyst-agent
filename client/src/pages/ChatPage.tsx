@@ -5,6 +5,7 @@ import StatusIndicator from "../components/StatusIndicator";
 import ChatMessage from "../components/ChatMessage";
 import InputArea from "../components/InputArea";
 import Sidebar from "../components/Sidebar";
+import NewConversationModal from "../components/NewConversationModal";
 
 export default function ChatPage() {
   const {
@@ -15,29 +16,27 @@ export default function ChatPage() {
     conversations,
     sendPrompt,
     killProcess,
+    createConversation,
     startConversation,
     deleteConversation,
   } = useWebSocket();
 
   const { projects } = useProjects();
-  const [selectedProjectId, setSelectedProjectId] = useState<string | null>(null);
+  const [filterProjectId, setFilterProjectId] = useState<string | null>(null);
+  const [showNewModal, setShowNewModal] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement | null>(null);
-
-  // Default to first project when projects load
-  useEffect(() => {
-    if (projects.length > 0 && !selectedProjectId) {
-      setSelectedProjectId(projects[0].id);
-    }
-  }, [projects, selectedProjectId]);
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages]);
 
   const handleNew = () => {
-    if (selectedProjectId) {
-      startConversation(undefined, selectedProjectId);
-    }
+    setShowNewModal(true);
+  };
+
+  const handleModalSubmit = (name: string, projectId: string) => {
+    createConversation(name, projectId);
+    setShowNewModal(false);
   };
 
   return (
@@ -45,16 +44,12 @@ export default function ChatPage() {
       <Sidebar
         conversations={conversations}
         currentId={currentConversation?.id ?? null}
-        onSelect={(id) => {
-          const conv = conversations.find((c) => c.id === id);
-          if (conv) setSelectedProjectId(conv.projectId);
-          startConversation(id);
-        }}
+        onSelect={(id) => startConversation(id)}
         onNew={handleNew}
         onDelete={(id) => deleteConversation(id)}
         projects={projects}
-        selectedProjectId={selectedProjectId}
-        onSelectProject={setSelectedProjectId}
+        filterProjectId={filterProjectId}
+        onFilterProject={setFilterProjectId}
       />
 
       <div className="flex flex-1 flex-col">
@@ -62,7 +57,7 @@ export default function ChatPage() {
         <header className="flex items-center justify-between border-b border-gray-800 px-4 py-3">
           <div className="min-w-0 flex-1">
             <h1 className="text-lg font-semibold text-gray-100 truncate">
-              {currentConversation?.title ?? "New conversation"}
+              {currentConversation?.name ?? "New conversation"}
             </h1>
             {currentConversation && (
               <button
@@ -83,7 +78,7 @@ export default function ChatPage() {
             {messages.length === 0 && (
               <div className="flex h-full items-center justify-center pt-32">
                 <p className="text-gray-600 text-sm">
-                  Send a message to start a conversation with Claude.
+                  Create a conversation to start chatting with Claude.
                 </p>
               </div>
             )}
@@ -99,9 +94,16 @@ export default function ChatPage() {
           onSend={sendPrompt}
           onStop={killProcess}
           isProcessing={isProcessing}
-          disabled={status !== "connected" || (!currentConversation && !selectedProjectId)}
+          disabled={status !== "connected" || !currentConversation}
         />
       </div>
+
+      <NewConversationModal
+        isOpen={showNewModal}
+        onClose={() => setShowNewModal(false)}
+        onSubmit={handleModalSubmit}
+        projects={projects}
+      />
     </div>
   );
 }

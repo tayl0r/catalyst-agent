@@ -8,30 +8,33 @@ interface SidebarProps {
   onNew: () => void;
   onDelete: (id: string) => void;
   projects: Project[];
-  selectedProjectId: string | null;
-  onSelectProject: (id: string) => void;
+  filterProjectId: string | null;
+  onFilterProject: (id: string | null) => void;
 }
 
-function relativeTime(dateStr: string): string {
-  const now = Date.now();
-  const then = new Date(dateStr).getTime();
-  if (Number.isNaN(then)) return "";
-  const diff = now - then;
+function formatTimestamp(dateStr: string): string {
+  const date = new Date(dateStr);
+  if (Number.isNaN(date.getTime())) return "";
 
-  const seconds = Math.floor(diff / 1000);
-  if (seconds < 60) return "just now";
+  const now = new Date();
+  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  const yesterday = new Date(today.getTime() - 86400000);
+  const dateDay = new Date(date.getFullYear(), date.getMonth(), date.getDate());
 
-  const minutes = Math.floor(seconds / 60);
-  if (minutes < 60) return `${minutes}m ago`;
+  const time = date.toLocaleTimeString("en-US", {
+    hour: "numeric",
+    minute: "2-digit",
+    hour12: true,
+  });
 
-  const hours = Math.floor(minutes / 60);
-  if (hours < 24) return `${hours}h ago`;
-
-  const days = Math.floor(hours / 24);
-  if (days < 30) return `${days}d ago`;
-
-  const months = Math.floor(days / 30);
-  return `${months}mo ago`;
+  if (dateDay.getTime() === today.getTime()) {
+    return `Today ${time}`;
+  }
+  if (dateDay.getTime() === yesterday.getTime()) {
+    return `Yesterday ${time}`;
+  }
+  const month = date.toLocaleString("en-US", { month: "short" });
+  return `${month} ${date.getDate()} ${time}`;
 }
 
 export default function Sidebar({
@@ -41,40 +44,42 @@ export default function Sidebar({
   onNew,
   onDelete,
   projects,
-  selectedProjectId,
-  onSelectProject,
+  filterProjectId,
+  onFilterProject,
 }: SidebarProps) {
   const sorted = [...conversations]
-    .filter((c) => !selectedProjectId || c.projectId === selectedProjectId)
+    .filter((c) => !filterProjectId || c.projectId === filterProjectId)
     .sort(
       (a, b) => new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime()
     );
 
   const projectMap = new Map(projects.map((p) => [p.id, p]));
   const noProjects = projects.length === 0;
-  const noSelection = !selectedProjectId;
 
   return (
     <div className="flex w-64 flex-col border-r border-gray-800 bg-gray-900">
       <div className="p-3 space-y-2">
-        {/* Project picker */}
-        <select
-          value={selectedProjectId ?? ""}
-          onChange={(e) => onSelectProject(e.target.value)}
-          disabled={noProjects}
-          className="w-full rounded border border-gray-700 bg-gray-800 px-2 py-1.5 text-sm text-gray-200 focus:border-blue-500 focus:outline-none disabled:opacity-50"
-        >
-          {noProjects && <option value="">No projects</option>}
-          {projects.map((p) => (
-            <option key={p.id} value={p.id}>
-              {p.name}
-            </option>
-          ))}
-        </select>
+        {/* Project filter */}
+        <div>
+          <label className="block text-xs text-gray-500 mb-1">Filter by project</label>
+          <select
+            value={filterProjectId ?? ""}
+            onChange={(e) => onFilterProject(e.target.value || null)}
+            disabled={noProjects}
+            className="w-full rounded border border-gray-700 bg-gray-800 px-2 py-1.5 text-sm text-gray-200 focus:border-blue-500 focus:outline-none disabled:opacity-50"
+          >
+            <option value="">All projects</option>
+            {projects.map((p) => (
+              <option key={p.id} value={p.id}>
+                {p.name}
+              </option>
+            ))}
+          </select>
+        </div>
 
         <button
           onClick={onNew}
-          disabled={noProjects || noSelection}
+          disabled={noProjects}
           className="flex w-full items-center justify-center gap-2 rounded-lg border border-gray-700 px-3 py-2 text-sm text-gray-300 hover:bg-gray-800 hover:text-gray-100 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
         >
           <span className="text-lg leading-none">+</span>
@@ -97,7 +102,7 @@ export default function Sidebar({
               }`}
             >
               <div className="min-w-0 flex-1">
-                <p className="truncate text-sm">{conv.title}</p>
+                <p className="truncate text-sm">{conv.name}</p>
                 <div className="flex items-center gap-1.5 mt-0.5">
                   {project && (
                     <>
@@ -106,11 +111,11 @@ export default function Sidebar({
                         style={{ backgroundColor: project.color }}
                       />
                       <span className="text-xs text-gray-500 truncate">{project.name}</span>
-                      <span className="text-xs text-gray-600">·</span>
+                      <span className="text-xs text-gray-600">&middot;</span>
                     </>
                   )}
                   <span className="text-xs text-gray-500">
-                    {relativeTime(conv.updated_at)}
+                    {formatTimestamp(conv.updated_at)}
                   </span>
                 </div>
               </div>

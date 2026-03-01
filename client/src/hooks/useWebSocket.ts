@@ -24,7 +24,8 @@ interface UseWebSocketReturn {
   conversations: Conversation[];
   sendPrompt: (text: string) => void;
   killProcess: () => void;
-  startConversation: (conversationId?: string, projectId?: string) => void;
+  createConversation: (name: string, projectId: string) => void;
+  startConversation: (conversationId: string) => void;
   deleteConversation: (conversationId: string) => void;
 }
 
@@ -45,6 +46,13 @@ export default function useWebSocket(): UseWebSocketReturn {
   // system) are discarded. Set on conversation switch to prevent ghost messages
   // from a killed process bleeding into the new conversation's message list.
   const discardStreamRef = useRef(false);
+  // Track current conversation for reconnect
+  const currentConversationRef = useRef<Conversation | null>(null);
+
+  // Keep ref in sync with state
+  useEffect(() => {
+    currentConversationRef.current = currentConversation;
+  }, [currentConversation]);
 
   const getWsUrl = useCallback(() => {
     const proto = window.location.protocol === "https:" ? "wss:" : "ws:";
@@ -74,6 +82,11 @@ export default function useWebSocket(): UseWebSocketReturn {
       reconnectDelay.current = RECONNECT_MIN;
       // Request conversation list on connect
       ws.send(JSON.stringify({ type: "list_conversations" }));
+      // Restore server session state on reconnect
+      const conv = currentConversationRef.current;
+      if (conv) {
+        ws.send(JSON.stringify({ type: "start", conversationId: conv.id }));
+      }
     };
 
     ws.onmessage = (event: MessageEvent) => {
@@ -265,24 +278,27 @@ export default function useWebSocket(): UseWebSocketReturn {
     wsSend({ type: "kill" });
   }, [wsSend]);
 
-  const startConversation = useCallback(
-    (conversationId?: string, projectId?: string) => {
-      // Discard any late messages from the old process
+  const createConversation = useCallback(
+    (name: string, projectId: string) => {
       discardStreamRef.current = true;
       wsSend({ type: "kill" });
       setIsProcessing(false);
       streamingTextRef.current = "";
       setMessages([]);
+      setCurrentConversation(null);
+      wsSend({ type: "create_conversation", name, projectId });
+    },
+    [wsSend]
+  );
 
-      if (conversationId) {
-        // discardStreamRef is cleared when "messages" replay arrives
-        wsSend({ type: "start", conversationId });
-      } else {
-        // New conversation — reset local state, server creates on first prompt.
-        // discardStreamRef is cleared when next sendPrompt is called.
-        setCurrentConversation(null);
-        wsSend({ type: "start", ...(projectId ? { projectId } : {}) });
-      }
+  const startConversation = useCallback(
+    (conversationId: string) => {
+      discardStreamRef.current = true;
+      wsSend({ type: "kill" });
+      setIsProcessing(false);
+      streamingTextRef.current = "";
+      setMessages([]);
+      wsSend({ type: "start", conversationId });
     },
     [wsSend]
   );
@@ -290,9 +306,10 @@ export default function useWebSocket(): UseWebSocketReturn {
   const deleteConversation = useCallback(
     (conversationId: string) => {
       wsSend({ type: "delete_conversation", conversationId });
-      // If deleting current conversation, reset to new
+      // If deleting current conversation, reset and discard in-flight streams
       setCurrentConversation((prev) => {
         if (prev?.id === conversationId) {
+          discardStreamRef.current = true;
           setMessages([]);
           return null;
         }
@@ -310,6 +327,7 @@ export default function useWebSocket(): UseWebSocketReturn {
     conversations,
     sendPrompt,
     killProcess,
+    createConversation,
     startConversation,
     deleteConversation,
   };

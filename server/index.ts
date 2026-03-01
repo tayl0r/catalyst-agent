@@ -7,12 +7,13 @@ import http from "http";
 import crypto from "crypto";
 import { WebSocketServer, WebSocket } from "ws";
 import { spawn, ChildProcess } from "child_process";
-import { isClientMessage } from "@shared/types.js";
+import { isClientMessage, slugify } from "@shared/types.js";
 import type { ServerMessage, ResultData, UIMessage } from "@shared/types.js";
 import {
   isValidConversationId,
   loadConversations,
   getConversation,
+  getProjectSlugs,
   createConversation,
   touchConversation,
   deleteConversation as deleteConv,
@@ -167,16 +168,6 @@ function broadcastConversationList(): void {
   broadcast({ type: "conversation_list", conversations: loadConversations() });
 }
 
-function makeTitle(text: string): string {
-  const max = 80;
-  if (text.length <= max) return text;
-  const sentenceEnd = text.lastIndexOf(".", max);
-  if (sentenceEnd > 20) return text.slice(0, sentenceEnd + 1);
-  const wordEnd = text.lastIndexOf(" ", max);
-  if (wordEnd > 20) return text.slice(0, wordEnd) + "...";
-  return text.slice(0, max) + "...";
-}
-
 wss.on("connection", (ws: WebSocket) => {
   if (wss.clients.size > MAX_CONNECTIONS) {
     ws.close(1013, "Too many connections");
@@ -258,6 +249,7 @@ wss.on("connection", (ws: WebSocket) => {
       if (currentConversationId === parsed.conversationId) {
         killProcess();
         currentConversationId = null;
+        pendingProjectId = null;
         isFirstPrompt = true;
       }
       // Broadcast deletion and updated list to all clients
@@ -266,32 +258,56 @@ wss.on("connection", (ws: WebSocket) => {
       return;
     }
 
+    if (parsed.type === "create_conversation") {
+      const trimmedName = parsed.name.trim();
+      if (!trimmedName || trimmedName.length > 200) {
+        send({ type: "error", data: "Conversation name must be 1-200 characters" });
+        return;
+      }
+      const project = getProject(parsed.projectId);
+      if (!project) {
+        send({ type: "error", data: "Project not found" });
+        return;
+      }
+      const id = crypto.randomUUID();
+      let slug = slugify(trimmedName);
+      // Ensure slug uniqueness within project
+      const existingSlugs = new Set(getProjectSlugs(parsed.projectId));
+      if (existingSlugs.has(slug)) {
+        let i = 2;
+        while (existingSlugs.has(`${slug}-${i}`)) i++;
+        slug = `${slug}-${i}`;
+      }
+      const conv = createConversation(id, trimmedName, slug, parsed.projectId);
+      killProcess();
+      currentConversationId = id;
+      pendingProjectId = parsed.projectId;
+      isFirstPrompt = true;
+      send({ type: "conversation", conversation: conv });
+      send({ type: "messages", messages: [] });
+      broadcastConversationList();
+      return;
+    }
+
     if (parsed.type === "start") {
       killProcess();
-      if (parsed.projectId) {
-        pendingProjectId = parsed.projectId;
+      if (!isValidConversationId(parsed.conversationId)) {
+        send({ type: "error", data: "Invalid conversation ID" });
+        return;
       }
-      if (parsed.conversationId) {
-        if (!isValidConversationId(parsed.conversationId)) {
-          send({ type: "error", data: "Invalid conversation ID" });
-          return;
-        }
-        const conv = getConversation(parsed.conversationId);
-        if (!conv) {
-          send({ type: "error", data: "Conversation not found" });
-          return;
-        }
-        currentConversationId = parsed.conversationId;
-        pendingProjectId = conv.projectId;
-        isFirstPrompt = false;
-        const messages = loadMessages(parsed.conversationId);
-        send({ type: "messages", messages });
-        send({ type: "conversation", conversation: conv });
-      } else {
-        currentConversationId = null;
-        isFirstPrompt = true;
-        send({ type: "conversation", conversation: null });
+      const conv = getConversation(parsed.conversationId);
+      if (!conv) {
+        send({ type: "error", data: "Conversation not found" });
+        return;
       }
+      currentConversationId = parsed.conversationId;
+      pendingProjectId = conv.projectId;
+      const messages = loadMessages(parsed.conversationId);
+      // If no messages exist, this conversation was created but never prompted —
+      // use --session-id (first prompt) instead of --resume
+      isFirstPrompt = messages.length === 0;
+      send({ type: "messages", messages });
+      send({ type: "conversation", conversation: conv });
       return;
     }
 
@@ -306,27 +322,19 @@ wss.on("connection", (ws: WebSocket) => {
       return;
     }
 
-    // Conversation management
+    // Require an active conversation (created via create_conversation)
     if (currentConversationId === null) {
-      if (!pendingProjectId) {
-        send({ type: "error", data: "No project selected" });
-        return;
-      }
-      const project = getProject(pendingProjectId);
-      if (!project) {
-        send({ type: "error", data: "Selected project not found" });
-        return;
-      }
-      const id = crypto.randomUUID();
-      const title = makeTitle(parsed.text);
-      const conv = createConversation(id, title, pendingProjectId);
-      currentConversationId = id;
-      isFirstPrompt = true;
-      send({ type: "conversation", conversation: conv });
-      broadcastConversationList();
-    } else {
-      touchConversation(currentConversationId);
+      send({ type: "error", data: "No conversation selected" });
+      return;
     }
+
+    const conv = getConversation(currentConversationId);
+    if (!conv) {
+      send({ type: "error", data: "Conversation not found" });
+      return;
+    }
+
+    touchConversation(currentConversationId);
 
     // Store user message
     const userMsg: UIMessage = {
@@ -354,6 +362,12 @@ wss.on("connection", (ws: WebSocket) => {
       sessionFlag, currentConversationId,
       "-p", "--output-format", "stream-json", "--verbose",
     ];
+    // -w creates a git worktree on the first prompt. On --resume, the CLI
+    // restores session context including the worktree. If that assumption
+    // proves wrong, we'll need to set cwd to the worktree path instead.
+    if (isFirstPrompt) {
+      args.push("-w", conv.slug);
+    }
 
     isFirstPrompt = false;
 
