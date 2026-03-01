@@ -12,6 +12,9 @@ interface SidebarProps {
   onFilterProject: (id: string | null) => void;
 }
 
+// Hardcoded for consistent formatting across locales
+const LOCALE = "en-US";
+
 function formatTimestamp(dateStr: string): string {
   const date = new Date(dateStr);
   if (Number.isNaN(date.getTime())) return "";
@@ -21,7 +24,7 @@ function formatTimestamp(dateStr: string): string {
   const yesterday = new Date(today.getTime() - 86400000);
   const dateDay = new Date(date.getFullYear(), date.getMonth(), date.getDate());
 
-  const time = date.toLocaleTimeString("en-US", {
+  const time = date.toLocaleTimeString(LOCALE, {
     hour: "numeric",
     minute: "2-digit",
     hour12: true,
@@ -33,7 +36,7 @@ function formatTimestamp(dateStr: string): string {
   if (dateDay.getTime() === yesterday.getTime()) {
     return `Yesterday ${time}`;
   }
-  const month = date.toLocaleString("en-US", { month: "short" });
+  const month = date.toLocaleString(LOCALE, { month: "short" });
   return `${month} ${date.getDate()} ${time}`;
 }
 

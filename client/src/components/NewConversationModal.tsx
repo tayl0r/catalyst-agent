@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect, useCallback } from "react";
+import { useState, useRef, useEffect, useCallback, useMemo } from "react";
 import { slugify } from "@shared/types";
 import type { Project } from "@shared/types";
 
@@ -28,10 +28,10 @@ export default function NewConversationModal({
   const slug = name.trim() ? slugify(name.trim()) : "";
   const canSubmit = name.trim() !== "" && selectedProject !== null;
 
-  const filtered = projects.filter((p) =>
-    p.name.toLowerCase().includes(projectQuery.toLowerCase())
-  );
-  const visibleResults = filtered.slice(0, 15);
+  const visibleResults = useMemo(() => {
+    const q = projectQuery.toLowerCase();
+    return projects.filter((p) => p.name.toLowerCase().includes(q)).slice(0, 15);
+  }, [projects, projectQuery]);
 
   // Reset state when modal opens
   useEffect(() => {
@@ -110,14 +110,6 @@ export default function NewConversationModal({
     }
   };
 
-  const handleKeyDown = (e: React.KeyboardEvent) => {
-    if (e.key === "Escape") {
-      onClose();
-    } else if (e.key === "Enter" && canSubmit) {
-      handleSubmit();
-    }
-  };
-
   if (!isOpen) return null;
 
   return (
@@ -126,18 +118,30 @@ export default function NewConversationModal({
       onClick={(e) => {
         if (e.target === e.currentTarget) onClose();
       }}
-      onKeyDown={handleKeyDown}
+      onKeyDown={(e) => {
+        if (e.key === "Escape") onClose();
+      }}
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="new-conversation-title"
     >
-      <div className="bg-gray-900 rounded-xl p-6 max-w-md w-full mx-4 border border-gray-700">
-        <h2 className="text-lg font-semibold text-gray-100 mb-4">
+      <form
+        className="bg-gray-900 rounded-xl p-6 max-w-md w-full mx-4 border border-gray-700"
+        onSubmit={(e) => {
+          e.preventDefault();
+          handleSubmit();
+        }}
+      >
+        <h2 id="new-conversation-title" className="text-lg font-semibold text-gray-100 mb-4">
           New Conversation
         </h2>
 
         {/* Project autocomplete */}
         <div className="mb-4">
-          <label className="block text-sm text-gray-400 mb-1.5">Project</label>
+          <label htmlFor="project-search" className="block text-sm text-gray-400 mb-1.5">Project</label>
           <div className="relative">
             <input
+              id="project-search"
               ref={projectInputRef}
               type="text"
               value={projectQuery}
@@ -194,8 +198,9 @@ export default function NewConversationModal({
 
         {/* Conversation name */}
         <div className="mb-4">
-          <label className="block text-sm text-gray-400 mb-1.5">Name</label>
+          <label htmlFor="conversation-name" className="block text-sm text-gray-400 mb-1.5">Name</label>
           <input
+            id="conversation-name"
             ref={nameInputRef}
             type="text"
             value={name}
@@ -220,15 +225,14 @@ export default function NewConversationModal({
             Cancel
           </button>
           <button
-            type="button"
-            onClick={handleSubmit}
+            type="submit"
             disabled={!canSubmit}
             className="rounded bg-blue-600 px-4 py-2 text-sm text-white hover:bg-blue-500 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
           >
             Create
           </button>
         </div>
-      </div>
+      </form>
     </div>
   );
 }

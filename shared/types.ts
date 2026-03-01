@@ -4,7 +4,7 @@ export interface Conversation {
   id: string;
   name: string;
   slug: string;
-  title: string; // kept for compat, set equal to name
+  title: string; // TODO: remove once migration is complete — kept for compat, set equal to name
   projectId: string;
   created_at: string;
   updated_at: string;
