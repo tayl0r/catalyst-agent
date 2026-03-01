@@ -11,5 +11,6 @@ target/
 !.env.example
 src-tauri/gen/
 .claude/settings.local.json
+.claude/worktrees/
 .worktrees/
 server/data/
