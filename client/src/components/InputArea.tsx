@@ -35,7 +35,7 @@ export default function InputArea({ onSend, onStop, isProcessing, disabled }: In
 
   return (
     <div className="border-t border-gray-800 bg-gray-950 p-4">
-      <div className="mx-auto flex max-w-3xl items-end gap-3">
+      <div className="mx-auto flex max-w-5xl items-end gap-3">
         <textarea
           ref={textareaRef}
           value={text}

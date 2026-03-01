@@ -75,7 +75,7 @@ export default function ChatPage() {
 
         {/* Messages */}
         <main className="flex-1 overflow-y-auto px-4 py-6">
-          <div className="mx-auto max-w-3xl space-y-4">
+          <div className="mx-auto max-w-5xl space-y-4">
             {messages.length === 0 && (
               <div className="flex h-full items-center justify-center pt-32">
                 <p className="text-gray-600 text-sm">
