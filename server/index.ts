@@ -2,7 +2,8 @@ import express from "express";
 import http from "http";
 import { WebSocketServer, WebSocket } from "ws";
 import { spawn, ChildProcess } from "child_process";
-import type { ClientMessage, ServerMessage, ResultData } from "@shared/types.js";
+import { isClientMessage } from "@shared/types.js";
+import type { ServerMessage, ResultData } from "@shared/types.js";
 
 const PORT = process.env.PORT || 3001;
 
@@ -57,25 +58,26 @@ wss.on("connection", (ws: WebSocket) => {
   }
 
   ws.on("message", (raw: Buffer) => {
-    let msg: ClientMessage;
+    let parsed: unknown;
     try {
-      msg = JSON.parse(raw.toString()) as ClientMessage;
+      parsed = JSON.parse(raw.toString());
     } catch {
       send({ type: "error", data: "Invalid JSON" });
       return;
     }
 
-    if (msg.type === "kill") {
+    if (!isClientMessage(parsed)) {
+      send({ type: "error", data: "Invalid message" });
+      return;
+    }
+
+    if (parsed.type === "kill") {
       killProcess();
       return;
     }
 
-    if (msg.type !== "prompt" || !msg.text) {
-      send({ type: "error", data: "Invalid message type" });
-      return;
-    }
-
-    if (typeof msg.text !== "string" || msg.text.length > 1_000_000) {
+    // parsed is narrowed to PromptMessage here
+    if (parsed.text.length > 1_000_000) {
       send({ type: "error", data: "Prompt too large (max 1MB)" });
       return;
     }
@@ -86,6 +88,7 @@ wss.on("connection", (ws: WebSocket) => {
     }
 
     const env = { ...process.env };
+    // Remove CLAUDECODE to avoid nested session error from Claude CLI
     delete env.CLAUDECODE;
 
     const args = [
@@ -96,6 +99,7 @@ wss.on("connection", (ws: WebSocket) => {
       "--include-partial-messages",
     ];
 
+    // Set activeProcess synchronously before spawn returns to prevent races
     const child = spawn("claude", args, {
       stdio: ["pipe", "pipe", "pipe"],
       env,
@@ -103,15 +107,18 @@ wss.on("connection", (ws: WebSocket) => {
 
     activeProcess = child;
 
+    // Write prompt via stdin to avoid ARG_MAX limits
     child.stdin!.on("error", () => { /* ignore EPIPE */ });
-    child.stdin!.write(msg.text);
+    child.stdin!.write(parsed.text);
     child.stdin!.end();
 
+    // NDJSON line buffer — chunks may arrive mid-line
     let buffer = "";
 
     child.stdout!.on("data", (chunk: Buffer) => {
       buffer += chunk.toString();
       const lines = buffer.split("\n");
+      // Keep last incomplete segment in buffer
       buffer = lines.pop()!;
 
       for (const line of lines) {

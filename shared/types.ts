@@ -68,28 +68,32 @@ export type ServerMessage =
 
 // --- Client-side UI message types (different from wire types) ---
 
-export interface UserUIMessage {
+interface BaseUIMessage {
+  id: string;
+}
+
+export interface UserUIMessage extends BaseUIMessage {
   type: "user";
   content: string;
 }
 
-export interface AssistantUIMessage {
+export interface AssistantUIMessage extends BaseUIMessage {
   type: "assistant";
   content: string;
   streaming: boolean;
 }
 
-export interface ErrorUIMessage {
+export interface ErrorUIMessage extends BaseUIMessage {
   type: "error";
   content: string;
 }
 
-export interface ResultUIMessage {
+export interface ResultUIMessage extends BaseUIMessage {
   type: "result";
   data: ResultData;
 }
 
-export interface SystemUIMessage {
+export interface SystemUIMessage extends BaseUIMessage {
   type: "system";
   data: Record<string, unknown>;
 }
@@ -104,3 +108,23 @@ export type UIMessage =
 // --- Connection status ---
 
 export type ConnectionStatus = "disconnected" | "connecting" | "connected";
+
+// --- Runtime type guards ---
+
+export function isClientMessage(msg: unknown): msg is ClientMessage {
+  if (typeof msg !== "object" || msg === null) return false;
+  const obj = msg as Record<string, unknown>;
+  if (obj.type === "kill") return true;
+  if (obj.type === "prompt" && typeof obj.text === "string") return true;
+  return false;
+}
+
+const SERVER_MESSAGE_TYPES: ReadonlySet<string> = new Set([
+  "text", "assistant", "result", "system", "error", "stderr", "done",
+]);
+
+export function isServerMessage(msg: unknown): msg is ServerMessage {
+  if (typeof msg !== "object" || msg === null) return false;
+  const obj = msg as Record<string, unknown>;
+  return typeof obj.type === "string" && SERVER_MESSAGE_TYPES.has(obj.type);
+}

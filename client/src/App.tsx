@@ -39,8 +39,8 @@ export default function App() {
               </p>
             </div>
           )}
-          {messages.map((msg, i) => (
-            <ChatMessage key={i} message={msg} />
+          {messages.map((msg) => (
+            <ChatMessage key={msg.id} message={msg} />
           ))}
           <div ref={messagesEndRef} />
         </div>

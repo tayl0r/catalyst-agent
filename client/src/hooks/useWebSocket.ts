@@ -1,5 +1,12 @@
 import { useState, useEffect, useRef, useCallback } from "react";
-import type { UIMessage, ConnectionStatus, ResultData } from "@shared/types";
+import { isServerMessage } from "@shared/types";
+import type { UIMessage, ConnectionStatus, ServerMessage } from "@shared/types";
+
+let nextMessageId = 0;
+
+function createId(): string {
+  return String(nextMessageId++);
+}
 
 const RECONNECT_MIN = 1000;
 const RECONNECT_MAX = 30000;
@@ -47,16 +54,18 @@ export default function useWebSocket(): UseWebSocketReturn {
 
     ws.onmessage = (event: MessageEvent) => {
       if (!mountedRef.current) return;
-      let msg: { type: string; data?: unknown };
+      let msg: ServerMessage;
       try {
-        msg = JSON.parse(event.data as string);
+        const raw: unknown = JSON.parse(event.data as string);
+        if (!isServerMessage(raw)) return;
+        msg = raw;
       } catch {
         return;
       }
 
       switch (msg.type) {
         case "text":
-          streamingTextRef.current += msg.data as string;
+          streamingTextRef.current += msg.data;
           setMessages((prev) => {
             const last = prev[prev.length - 1];
             if (last?.type === "assistant" && last.streaming) {
@@ -76,12 +85,12 @@ export default function useWebSocket(): UseWebSocketReturn {
             if (last?.type === "assistant" && last.streaming) {
               return [
                 ...prev.slice(0, -1),
-                { type: "assistant" as const, content: streamingTextRef.current, streaming: false },
+                { ...last, content: streamingTextRef.current, streaming: false },
               ];
             }
             return [
               ...prev,
-              { type: "assistant" as const, content: streamingTextRef.current || JSON.stringify(msg.data), streaming: false },
+              { id: createId(), type: "assistant", content: streamingTextRef.current || JSON.stringify(msg.data), streaming: false },
             ];
           });
           break;
@@ -89,14 +98,14 @@ export default function useWebSocket(): UseWebSocketReturn {
         case "result":
           setMessages((prev) => [
             ...prev,
-            { type: "result" as const, data: msg.data as ResultData },
+            { id: createId(), type: "result", data: msg.data },
           ]);
           break;
 
         case "system":
           setMessages((prev) => [
             ...prev,
-            { type: "system" as const, data: msg.data as Record<string, unknown> },
+            { id: createId(), type: "system", data: msg.data },
           ]);
           break;
 
@@ -112,7 +121,7 @@ export default function useWebSocket(): UseWebSocketReturn {
         case "error":
           setMessages((prev) => [
             ...prev,
-            { type: "error" as const, content: msg.data as string },
+            { id: createId(), type: "error", content: msg.data },
           ]);
           setIsProcessing(false);
           streamingTextRef.current = "";
@@ -169,8 +178,8 @@ export default function useWebSocket(): UseWebSocketReturn {
       setIsProcessing(true);
       setMessages((prev) => [
         ...prev,
-        { type: "user" as const, content: text },
-        { type: "assistant" as const, content: "", streaming: true },
+        { id: createId(), type: "user", content: text },
+        { id: createId(), type: "assistant", content: "", streaming: true },
       ]);
       wsRef.current.send(JSON.stringify({ type: "prompt", text }));
     },
