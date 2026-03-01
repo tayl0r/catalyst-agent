@@ -56,6 +56,10 @@ export default function Sidebar({
 
   return (
     <div className="flex w-64 flex-col border-r border-gray-800 bg-gray-900">
+      <div className="px-3 pt-3 pb-1">
+        <h1 className="text-sm font-bold text-gray-100">cc-web</h1>
+        <p className="text-xs text-gray-500" title={`Version ${__APP_VERSION__} (${__GIT_COMMIT__})`}>v{__APP_VERSION__} · {__GIT_COMMIT__}</p>
+      </div>
       <div className="p-3 space-y-2">
         {/* Project picker */}
         <select

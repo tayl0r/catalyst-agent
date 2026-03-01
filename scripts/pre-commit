@@ -1,0 +1,31 @@
+#!/bin/sh
+# cc-web auto-version
+set -e
+
+# Auto-increment patch version in version.json on every commit
+REPO_ROOT="$(git rev-parse --show-toplevel)"
+VERSION_FILE="$REPO_ROOT/version.json"
+
+if [ ! -f "$VERSION_FILE" ]; then
+  echo "version.json not found, skipping version bump"
+  exit 0
+fi
+
+# Read current version (pure shell, no node dependency)
+CURRENT=$(sed -n 's/.*"version"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' "$VERSION_FILE")
+
+# Split into major.minor.patch and increment patch
+MAJOR=$(echo "$CURRENT" | cut -d. -f1)
+MINOR=$(echo "$CURRENT" | cut -d. -f2)
+PATCH=$(echo "$CURRENT" | cut -d. -f3)
+PATCH=$((PATCH + 1))
+
+NEW_VERSION="$MAJOR.$MINOR.$PATCH"
+
+# Write back
+printf '{ "version": "%s" }\n' "$NEW_VERSION" > "$VERSION_FILE"
+
+# Stage the updated file
+git add "$VERSION_FILE"
+
+echo "Version bumped: $CURRENT -> $NEW_VERSION"
