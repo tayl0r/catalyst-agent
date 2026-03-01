@@ -1,7 +1,12 @@
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
+import type { UIMessage } from "@shared/types";
 
-export default function ChatMessage({ message }) {
+interface ChatMessageProps {
+  message: UIMessage;
+}
+
+export default function ChatMessage({ message }: ChatMessageProps) {
   if (message.type === "user") {
     return (
       <div className="flex justify-end">

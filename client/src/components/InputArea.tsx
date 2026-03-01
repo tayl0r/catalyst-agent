@@ -1,13 +1,20 @@
 import { useState, useRef, useEffect } from "react";
 
+interface InputAreaProps {
+  onSend: (text: string) => void;
+  onStop: () => void;
+  isProcessing: boolean;
+  disabled: boolean;
+}
+
 export default function InputArea({
   onSend,
   onStop,
   isProcessing,
   disabled,
-}) {
+}: InputAreaProps) {
   const [text, setText] = useState("");
-  const textareaRef = useRef(null);
+  const textareaRef = useRef<HTMLTextAreaElement | null>(null);
 
   useEffect(() => {
     if (textareaRef.current) {
@@ -24,7 +31,7 @@ export default function InputArea({
     setText("");
   };
 
-  const handleKeyDown = (e) => {
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault();
       if (isProcessing) return;

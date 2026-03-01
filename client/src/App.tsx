@@ -7,7 +7,7 @@ import InputArea from "./components/InputArea";
 export default function App() {
   const { status, messages, isProcessing, sendPrompt, killProcess, clearMessages } =
     useWebSocket();
-  const messagesEndRef = useRef(null);
+  const messagesEndRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });

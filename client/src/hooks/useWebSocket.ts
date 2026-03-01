@@ -1,16 +1,26 @@
 import { useState, useEffect, useRef, useCallback } from "react";
+import type { UIMessage, ConnectionStatus, ResultData } from "@shared/types";
 
 const RECONNECT_MIN = 1000;
 const RECONNECT_MAX = 30000;
 
-export default function useWebSocket() {
-  const [status, setStatus] = useState("disconnected");
-  const [messages, setMessages] = useState([]);
+interface UseWebSocketReturn {
+  status: ConnectionStatus;
+  messages: UIMessage[];
+  isProcessing: boolean;
+  sendPrompt: (text: string) => void;
+  killProcess: () => void;
+  clearMessages: () => void;
+}
+
+export default function useWebSocket(): UseWebSocketReturn {
+  const [status, setStatus] = useState<ConnectionStatus>("disconnected");
+  const [messages, setMessages] = useState<UIMessage[]>([]);
   const [isProcessing, setIsProcessing] = useState(false);
 
-  const wsRef = useRef(null);
+  const wsRef = useRef<WebSocket | null>(null);
   const reconnectDelay = useRef(RECONNECT_MIN);
-  const reconnectTimer = useRef(null);
+  const reconnectTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const streamingTextRef = useRef("");
   const mountedRef = useRef(true);
 
@@ -35,18 +45,18 @@ export default function useWebSocket() {
       reconnectDelay.current = RECONNECT_MIN;
     };
 
-    ws.onmessage = (event) => {
+    ws.onmessage = (event: MessageEvent) => {
       if (!mountedRef.current) return;
-      let msg;
+      let msg: { type: string; data?: unknown };
       try {
-        msg = JSON.parse(event.data);
+        msg = JSON.parse(event.data as string);
       } catch {
         return;
       }
 
       switch (msg.type) {
         case "text":
-          streamingTextRef.current += msg.data;
+          streamingTextRef.current += msg.data as string;
           setMessages((prev) => {
             const last = prev[prev.length - 1];
             if (last?.type === "assistant" && last.streaming) {
@@ -66,12 +76,12 @@ export default function useWebSocket() {
             if (last?.type === "assistant" && last.streaming) {
               return [
                 ...prev.slice(0, -1),
-                { type: "assistant", content: streamingTextRef.current, streaming: false },
+                { type: "assistant" as const, content: streamingTextRef.current, streaming: false },
               ];
             }
             return [
               ...prev,
-              { type: "assistant", content: streamingTextRef.current || JSON.stringify(msg.data), streaming: false },
+              { type: "assistant" as const, content: streamingTextRef.current || JSON.stringify(msg.data), streaming: false },
             ];
           });
           break;
@@ -79,14 +89,14 @@ export default function useWebSocket() {
         case "result":
           setMessages((prev) => [
             ...prev,
-            { type: "result", data: msg.data },
+            { type: "result" as const, data: msg.data as ResultData },
           ]);
           break;
 
         case "system":
           setMessages((prev) => [
             ...prev,
-            { type: "system", data: msg.data },
+            { type: "system" as const, data: msg.data as Record<string, unknown> },
           ]);
           break;
 
@@ -102,7 +112,7 @@ export default function useWebSocket() {
         case "error":
           setMessages((prev) => [
             ...prev,
-            { type: "error", content: msg.data },
+            { type: "error" as const, content: msg.data as string },
           ]);
           setIsProcessing(false);
           streamingTextRef.current = "";
@@ -138,7 +148,7 @@ export default function useWebSocket() {
     connect();
     return () => {
       mountedRef.current = false;
-      clearTimeout(reconnectTimer.current);
+      if (reconnectTimer.current) clearTimeout(reconnectTimer.current);
       wsRef.current?.close();
     };
   }, [connect]);
@@ -151,7 +161,7 @@ export default function useWebSocket() {
   }, [isProcessing]);
 
   const sendPrompt = useCallback(
-    (text) => {
+    (text: string) => {
       if (!wsRef.current || wsRef.current.readyState !== WebSocket.OPEN) return;
       if (isProcessingRef.current) return;
 
@@ -159,8 +169,8 @@ export default function useWebSocket() {
       setIsProcessing(true);
       setMessages((prev) => [
         ...prev,
-        { type: "user", content: text },
-        { type: "assistant", content: "", streaming: true },
+        { type: "user" as const, content: text },
+        { type: "assistant" as const, content: "", streaming: true },
       ]);
       wsRef.current.send(JSON.stringify({ type: "prompt", text }));
     },

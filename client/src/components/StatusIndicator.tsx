@@ -1,4 +1,10 @@
-export default function StatusIndicator({ status }) {
+import type { ConnectionStatus } from "@shared/types";
+
+interface StatusIndicatorProps {
+  status: ConnectionStatus;
+}
+
+export default function StatusIndicator({ status }: StatusIndicatorProps) {
   const color =
     status === "connected"
       ? "bg-green-500"
