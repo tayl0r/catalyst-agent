@@ -688,5 +688,5 @@ process.on("SIGTERM", shutdownAll);
 process.on("SIGINT", shutdownAll);
 
 server.listen(PORT, () => {
-  console.log(`cc-web server listening on port ${PORT}`);
+  console.log(`Catalyst Agent server listening on port ${PORT}`);
 });

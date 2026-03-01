@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { useLocation, useNavigate } from "react-router-dom";
 import ChatMessage from "../components/ChatMessage";
 import InputArea from "../components/InputArea";
 import NewConversationModal from "../components/NewConversationModal";
@@ -22,15 +23,30 @@ export default function ChatPage() {
   } = useWebSocket();
 
   const { projects } = useProjects();
+  const location = useLocation();
+  const navigate = useNavigate();
   const [filterProjectId, setFilterProjectId] = useState<string | null>(null);
   const [showNewModal, setShowNewModal] = useState(false);
+  const [initialProjectId, setInitialProjectId] = useState<string | null>(null);
   const messagesEndRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages]);
 
+  // Open modal with pre-selected project when navigated from ProjectsPage
+  useEffect(() => {
+    const state = location.state as { newConversationProjectId?: string } | null;
+    if (state?.newConversationProjectId) {
+      setInitialProjectId(state.newConversationProjectId);
+      setShowNewModal(true);
+      // Clear the state so refreshing doesn't re-open the modal
+      navigate("/", { replace: true, state: {} });
+    }
+  }, [location.state, navigate]);
+
   const handleNew = () => {
+    setInitialProjectId(null);
     setShowNewModal(true);
   };
 
@@ -104,6 +120,7 @@ export default function ChatPage() {
         onClose={() => setShowNewModal(false)}
         onSubmit={handleModalSubmit}
         projects={projects}
+        initialProjectId={initialProjectId}
       />
     </div>
   );

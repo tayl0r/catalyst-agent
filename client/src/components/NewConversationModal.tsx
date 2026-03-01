@@ -7,6 +7,7 @@ interface NewConversationModalProps {
   onClose: () => void;
   onSubmit: (name: string, projectId: string) => void;
   projects: Project[];
+  initialProjectId?: string | null;
 }
 
 export default function NewConversationModal({
@@ -14,6 +15,7 @@ export default function NewConversationModal({
   onClose,
   onSubmit,
   projects,
+  initialProjectId,
 }: NewConversationModalProps) {
   const [name, setName] = useState("");
   const [projectQuery, setProjectQuery] = useState("");
@@ -37,14 +39,24 @@ export default function NewConversationModal({
   useEffect(() => {
     if (isOpen) {
       setName("");
-      setProjectQuery("");
-      setSelectedProject(null);
       setShowDropdown(false);
       setHighlightIndex(0);
-      // Focus project input on open
-      setTimeout(() => projectInputRef.current?.focus(), 50);
+
+      const initial = initialProjectId ? projects.find((p) => p.id === initialProjectId) : null;
+      if (initial) {
+        setSelectedProject(initial);
+        setProjectQuery(initial.name);
+        setTimeout(() => {
+          nameInputRef.current?.focus();
+          setShowDropdown(false);
+        }, 50);
+      } else {
+        setSelectedProject(null);
+        setProjectQuery("");
+        setTimeout(() => projectInputRef.current?.focus(), 50);
+      }
     }
-  }, [isOpen]);
+  }, [isOpen, initialProjectId, projects]);
 
   // Clamp highlight index when results change
   useEffect(() => {
@@ -198,7 +210,7 @@ export default function NewConversationModal({
         {/* Conversation name */}
         <div className="mb-4">
           <label htmlFor="conversation-name" className="block text-sm text-gray-400 mb-1.5">
-            Name
+            Feature <span className="text-gray-600">(creates a branch &amp; worktree)</span>
           </label>
           <input
             id="conversation-name"

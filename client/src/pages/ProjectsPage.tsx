@@ -1,6 +1,6 @@
 import { PORT_INCREMENT, PROJECT_COLORS } from "@shared/types";
 import { useState } from "react";
-import { Link } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import useProjects from "../hooks/useProjects";
 
 interface ProjectForm {
@@ -13,6 +13,7 @@ interface ProjectForm {
 const emptyForm: ProjectForm = { name: "", path: "", description: "", color: PROJECT_COLORS[0] };
 
 export default function ProjectsPage() {
+  const navigate = useNavigate();
   const { projects, loading, error, createProject, updateProject, deleteProject } = useProjects();
   const [editingId, setEditingId] = useState<string | null>(null);
   const [form, setForm] = useState<ProjectForm>(emptyForm);
@@ -186,6 +187,15 @@ export default function ProjectsPage() {
                   )}
                 </div>
                 <div className="flex gap-1 shrink-0">
+                  <button
+                    type="button"
+                    onClick={() =>
+                      navigate("/", { state: { newConversationProjectId: project.id } })
+                    }
+                    className="rounded px-2 py-1 text-xs text-gray-400 hover:bg-gray-800 hover:text-blue-400 transition-colors"
+                  >
+                    New Chat
+                  </button>
                   <button
                     type="button"
                     onClick={() => startEdit(project.id)}

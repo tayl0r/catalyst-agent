@@ -53,16 +53,16 @@ export function getProject(id: string): Project | undefined {
 function writeClaudeMd(projectPath: string, startPort: number): void {
   const endPort = startPort + PORT_INCREMENT - 1;
   const section = [
-    "# cc-web",
+    "# Catalyst Agent",
     "",
-    `This project is managed by cc-web (a project configuration management app). It has assigned you ports ${startPort}-${endPort}. When you create any launch files or server configs, DO NOT use any ports outside of that range.`,
+    `This project is managed by Catalyst Agent (a project configuration management app). It has assigned you ports ${startPort}-${endPort}. When you create any launch files or server configs, DO NOT use any ports outside of that range.`,
   ].join("\n");
 
   try {
     const claudeMdPath = path.join(projectPath, "CLAUDE.md");
     if (fs.existsSync(claudeMdPath)) {
       const existing = fs.readFileSync(claudeMdPath, "utf8");
-      if (!existing.includes("managed by cc-web")) {
+      if (!existing.includes("managed by Catalyst Agent")) {
         atomicWrite(claudeMdPath, `${existing}\n\n${section}\n`);
       }
     } else {
