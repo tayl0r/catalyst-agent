@@ -1,4 +1,5 @@
-import type { Conversation } from "@shared/types";
+import { Link } from "react-router-dom";
+import type { Conversation, Project } from "@shared/types";
 
 interface SidebarProps {
   conversations: Conversation[];
@@ -6,6 +7,9 @@ interface SidebarProps {
   onSelect: (id: string) => void;
   onNew: () => void;
   onDelete: (id: string) => void;
+  projects: Project[];
+  selectedProjectId: string | null;
+  onSelectProject: (id: string) => void;
 }
 
 function relativeTime(dateStr: string): string {
@@ -36,17 +40,42 @@ export default function Sidebar({
   onSelect,
   onNew,
   onDelete,
+  projects,
+  selectedProjectId,
+  onSelectProject,
 }: SidebarProps) {
-  const sorted = [...conversations].sort(
-    (a, b) => new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime()
-  );
+  const sorted = [...conversations]
+    .filter((c) => !selectedProjectId || c.projectId === selectedProjectId)
+    .sort(
+      (a, b) => new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime()
+    );
+
+  const projectMap = new Map(projects.map((p) => [p.id, p]));
+  const noProjects = projects.length === 0;
+  const noSelection = !selectedProjectId;
 
   return (
     <div className="flex w-64 flex-col border-r border-gray-800 bg-gray-900">
-      <div className="p-3">
+      <div className="p-3 space-y-2">
+        {/* Project picker */}
+        <select
+          value={selectedProjectId ?? ""}
+          onChange={(e) => onSelectProject(e.target.value)}
+          disabled={noProjects}
+          className="w-full rounded border border-gray-700 bg-gray-800 px-2 py-1.5 text-sm text-gray-200 focus:border-blue-500 focus:outline-none disabled:opacity-50"
+        >
+          {noProjects && <option value="">No projects</option>}
+          {projects.map((p) => (
+            <option key={p.id} value={p.id}>
+              {p.name}
+            </option>
+          ))}
+        </select>
+
         <button
           onClick={onNew}
-          className="flex w-full items-center justify-center gap-2 rounded-lg border border-gray-700 px-3 py-2 text-sm text-gray-300 hover:bg-gray-800 hover:text-gray-100 transition-colors"
+          disabled={noProjects || noSelection}
+          className="flex w-full items-center justify-center gap-2 rounded-lg border border-gray-700 px-3 py-2 text-sm text-gray-300 hover:bg-gray-800 hover:text-gray-100 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
         >
           <span className="text-lg leading-none">+</span>
           New conversation
@@ -56,6 +85,7 @@ export default function Sidebar({
       <div className="flex-1 overflow-y-auto">
         {sorted.map((conv) => {
           const isActive = conv.id === currentId;
+          const project = projectMap.get(conv.projectId);
           return (
             <div
               key={conv.id}
@@ -68,9 +98,21 @@ export default function Sidebar({
             >
               <div className="min-w-0 flex-1">
                 <p className="truncate text-sm">{conv.title}</p>
-                <p className="text-xs text-gray-500 mt-0.5">
-                  {relativeTime(conv.updated_at)}
-                </p>
+                <div className="flex items-center gap-1.5 mt-0.5">
+                  {project && (
+                    <>
+                      <span
+                        className="inline-block h-2 w-2 rounded-full shrink-0"
+                        style={{ backgroundColor: project.color }}
+                      />
+                      <span className="text-xs text-gray-500 truncate">{project.name}</span>
+                      <span className="text-xs text-gray-600">·</span>
+                    </>
+                  )}
+                  <span className="text-xs text-gray-500">
+                    {relativeTime(conv.updated_at)}
+                  </span>
+                </div>
               </div>
               <button
                 onClick={(e) => {
@@ -94,6 +136,16 @@ export default function Sidebar({
             </div>
           );
         })}
+      </div>
+
+      {/* Manage Projects link */}
+      <div className="border-t border-gray-800 p-3">
+        <Link
+          to="/projects"
+          className="block text-center text-xs text-gray-500 hover:text-gray-300 transition-colors"
+        >
+          Manage Projects
+        </Link>
       </div>
     </div>
   );

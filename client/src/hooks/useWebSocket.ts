@@ -24,7 +24,7 @@ interface UseWebSocketReturn {
   conversations: Conversation[];
   sendPrompt: (text: string) => void;
   killProcess: () => void;
-  startConversation: (conversationId?: string) => void;
+  startConversation: (conversationId?: string, projectId?: string) => void;
   deleteConversation: (conversationId: string) => void;
 }
 
@@ -266,7 +266,7 @@ export default function useWebSocket(): UseWebSocketReturn {
   }, [wsSend]);
 
   const startConversation = useCallback(
-    (conversationId?: string) => {
+    (conversationId?: string, projectId?: string) => {
       // Discard any late messages from the old process
       discardStreamRef.current = true;
       wsSend({ type: "kill" });
@@ -281,7 +281,7 @@ export default function useWebSocket(): UseWebSocketReturn {
         // New conversation — reset local state, server creates on first prompt.
         // discardStreamRef is cleared when next sendPrompt is called.
         setCurrentConversation(null);
-        wsSend({ type: "start" });
+        wsSend({ type: "start", ...(projectId ? { projectId } : {}) });
       }
     },
     [wsSend]

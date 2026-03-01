@@ -3,9 +3,31 @@
 export interface Conversation {
   id: string;
   title: string;
+  projectId: string;
   created_at: string;
   updated_at: string;
 }
+
+export interface Project {
+  id: string;
+  name: string;
+  path: string;
+  description?: string;
+  color: string; // hex color e.g. "#3b82f6"
+}
+
+export const PROJECT_COLORS = [
+  "#3b82f6", // blue
+  "#10b981", // emerald
+  "#f59e0b", // amber
+  "#ef4444", // red
+  "#8b5cf6", // violet
+  "#ec4899", // pink
+  "#06b6d4", // cyan
+  "#f97316", // orange
+  "#84cc16", // lime
+  "#6366f1", // indigo
+] as const;
 
 // --- Client-to-server messages ---
 
@@ -21,6 +43,7 @@ export interface KillMessage {
 export interface StartMessage {
   type: "start";
   conversationId?: string;
+  projectId?: string;
 }
 
 export interface ListConversationsMessage {
@@ -169,7 +192,9 @@ export function isClientMessage(msg: unknown): msg is ClientMessage {
   if (obj.type === "kill") return true;
   if (obj.type === "prompt" && typeof obj.text === "string") return true;
   if (obj.type === "start") {
-    return obj.conversationId === undefined || typeof obj.conversationId === "string";
+    if (obj.conversationId !== undefined && typeof obj.conversationId !== "string") return false;
+    if (obj.projectId !== undefined && typeof obj.projectId !== "string") return false;
+    return true;
   }
   if (obj.type === "list_conversations") return true;
   if (obj.type === "delete_conversation" && typeof obj.conversationId === "string") return true;

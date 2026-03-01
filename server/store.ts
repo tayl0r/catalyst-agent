@@ -1,8 +1,8 @@
 import fs from "fs";
 import path from "path";
-import crypto from "crypto";
 import { fileURLToPath } from "url";
 import type { Conversation, UIMessage } from "@shared/types.js";
+import { isValidId, atomicWrite, readJson } from "./utils.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const DATA_DIR = path.join(__dirname, "data");
@@ -15,28 +15,12 @@ const CONVERSATIONS_FILE = path.join(DATA_DIR, "conversations.json");
 // loop — no interleaving is possible within a single process. If this module
 // is ever converted to async I/O, a per-file lock must be added.
 
-const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-
 export function isValidConversationId(id: string): boolean {
-  return UUID_RE.test(id);
+  return isValidId(id);
 }
 
 function ensureDirs(): void {
   fs.mkdirSync(MESSAGES_DIR, { recursive: true });
-}
-
-function atomicWrite(filePath: string, data: string): void {
-  const tmp = `${filePath}.${crypto.randomUUID()}.tmp`;
-  fs.writeFileSync(tmp, data, "utf-8");
-  fs.renameSync(tmp, filePath);
-}
-
-function readJson<T>(filePath: string, fallback: T): T {
-  try {
-    return JSON.parse(fs.readFileSync(filePath, "utf-8")) as T;
-  } catch {
-    return fallback;
-  }
 }
 
 function messagesPath(conversationId: string): string {
@@ -57,7 +41,7 @@ export function getConversation(id: string): Conversation | undefined {
   return loadConversations().find((c) => c.id === id);
 }
 
-export function createConversation(id: string, title: string): Conversation {
+export function createConversation(id: string, title: string, projectId: string): Conversation {
   if (!isValidConversationId(id)) {
     throw new Error("Invalid conversation ID");
   }
@@ -65,6 +49,7 @@ export function createConversation(id: string, title: string): Conversation {
   const conversation: Conversation = {
     id,
     title,
+    projectId,
     created_at: now,
     updated_at: now,
   };

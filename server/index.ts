@@ -1,3 +1,7 @@
+import dotenv from "dotenv";
+import path from "path";
+import fs from "fs";
+import { fileURLToPath } from "url";
 import express from "express";
 import http from "http";
 import crypto from "crypto";
@@ -15,6 +19,19 @@ import {
   loadMessages,
   appendMessage,
 } from "./store.js";
+import {
+  loadProjects,
+  getProject,
+  createProject,
+  updateProject,
+  deleteProject,
+  populateFromDirectory,
+  getProjectPath,
+  expandTilde,
+} from "./project-store.js";
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+dotenv.config({ path: [path.resolve(__dirname, "../.env.local"), path.resolve(__dirname, "../.env")] });
 
 const PORT = process.env.PORT || 3001;
 const MAX_CONNECTIONS = 10;
@@ -22,6 +39,110 @@ const MAX_CONNECTIONS = 10;
 const app = express();
 const server = http.createServer(app);
 const wss = new WebSocketServer({ noServer: true });
+
+// --- Startup migration ---
+populateFromDirectory(process.env.ROOT_PROJECT_DIR || "~/dev");
+
+// Delete conversations without projectId
+const allConvs = loadConversations();
+const orphaned = allConvs.filter((c) => !c.projectId);
+if (orphaned.length > 0) {
+  for (const c of orphaned) {
+    deleteConv(c.id);
+  }
+  console.log(`Deleted ${orphaned.length} conversation(s) without projectId`);
+}
+
+// --- Middleware ---
+app.use(express.json());
+
+// --- REST API routes ---
+
+app.get("/api/projects", (_req, res) => {
+  res.json(loadProjects());
+});
+
+app.post("/api/projects", (req, res) => {
+  const { name, path: projectPath, description, color } = req.body;
+  if (typeof name !== "string" || !name.trim()) {
+    res.status(400).json({ error: "name is required" });
+    return;
+  }
+  if (typeof projectPath !== "string" || !projectPath.trim()) {
+    res.status(400).json({ error: "path is required" });
+    return;
+  }
+  const resolvedPath = expandTilde(projectPath.trim());
+  try {
+    const stat = fs.statSync(resolvedPath);
+    if (!stat.isDirectory()) {
+      res.status(400).json({ error: "path is not a directory" });
+      return;
+    }
+  } catch {
+    res.status(400).json({ error: "path does not exist" });
+    return;
+  }
+  const project = createProject(name.trim(), resolvedPath, description?.trim(), color);
+  res.status(201).json(project);
+});
+
+app.put("/api/projects/:id", (req, res) => {
+  const { id } = req.params;
+  const existing = getProject(id);
+  if (!existing) {
+    res.status(404).json({ error: "Project not found" });
+    return;
+  }
+  const { name, path: projectPath, description, color } = req.body;
+  if (name !== undefined && (typeof name !== "string" || !name.trim())) {
+    res.status(400).json({ error: "name must be a non-empty string" });
+    return;
+  }
+  let resolvedPath: string | undefined;
+  if (projectPath !== undefined) {
+    if (typeof projectPath !== "string" || !projectPath.trim()) {
+      res.status(400).json({ error: "path must be a non-empty string" });
+      return;
+    }
+    resolvedPath = expandTilde(projectPath.trim());
+    try {
+      const stat = fs.statSync(resolvedPath);
+      if (!stat.isDirectory()) {
+        res.status(400).json({ error: "path is not a directory" });
+        return;
+      }
+    } catch {
+      res.status(400).json({ error: "path does not exist" });
+      return;
+    }
+  }
+  const updated = updateProject(id, {
+    name: name?.trim(),
+    path: resolvedPath,
+    description: description?.trim(),
+    color,
+  });
+  res.json(updated);
+});
+
+app.delete("/api/projects/:id", (req, res) => {
+  const { id } = req.params;
+  const existing = getProject(id);
+  if (!existing) {
+    res.status(404).json({ error: "Project not found" });
+    return;
+  }
+  const convs = loadConversations().filter((c) => c.projectId === id);
+  if (convs.length > 0) {
+    res.status(409).json({ error: `Cannot delete: ${convs.length} conversation(s) reference this project` });
+    return;
+  }
+  deleteProject(id);
+  res.status(204).end();
+});
+
+// --- WebSocket upgrade ---
 
 server.on("upgrade", (req, socket, head) => {
   if (req.url === "/ws") {
@@ -66,6 +187,7 @@ wss.on("connection", (ws: WebSocket) => {
   let killTimeout: ReturnType<typeof setTimeout> | null = null;
   let currentConversationId: string | null = null;
   let isFirstPrompt = true;
+  let pendingProjectId: string | null = null;
 
   function send(obj: ServerMessage): void {
     if (ws.readyState === WebSocket.OPEN) {
@@ -146,6 +268,9 @@ wss.on("connection", (ws: WebSocket) => {
 
     if (parsed.type === "start") {
       killProcess();
+      if (parsed.projectId) {
+        pendingProjectId = parsed.projectId;
+      }
       if (parsed.conversationId) {
         if (!isValidConversationId(parsed.conversationId)) {
           send({ type: "error", data: "Invalid conversation ID" });
@@ -157,6 +282,7 @@ wss.on("connection", (ws: WebSocket) => {
           return;
         }
         currentConversationId = parsed.conversationId;
+        pendingProjectId = conv.projectId;
         isFirstPrompt = false;
         const messages = loadMessages(parsed.conversationId);
         send({ type: "messages", messages });
@@ -182,9 +308,18 @@ wss.on("connection", (ws: WebSocket) => {
 
     // Conversation management
     if (currentConversationId === null) {
+      if (!pendingProjectId) {
+        send({ type: "error", data: "No project selected" });
+        return;
+      }
+      const project = getProject(pendingProjectId);
+      if (!project) {
+        send({ type: "error", data: "Selected project not found" });
+        return;
+      }
       const id = crypto.randomUUID();
       const title = makeTitle(parsed.text);
-      const conv = createConversation(id, title);
+      const conv = createConversation(id, title, pendingProjectId);
       currentConversationId = id;
       isFirstPrompt = true;
       send({ type: "conversation", conversation: conv });
@@ -201,14 +336,22 @@ wss.on("connection", (ws: WebSocket) => {
     };
     appendMessage(currentConversationId, userMsg);
 
+    // Resolve project cwd
+    const projectPath = pendingProjectId ? getProjectPath(pendingProjectId) : undefined;
+    if (projectPath && !fs.existsSync(projectPath)) {
+      send({ type: "error", data: `Project directory does not exist: ${projectPath}` });
+      return;
+    }
+
     const env = { ...process.env };
     delete env.CLAUDECODE;
 
-    // Always use --session-id: it creates a new session if none exists,
-    // or resumes an existing one. Safer than --resume which may not
-    // accept a UUID argument in all CLI versions.
+    // First prompt: --session-id creates a new session with that UUID.
+    // Subsequent prompts: --resume loads an existing session by UUID.
+    // Using --session-id on an existing session fails with "already in use".
+    const sessionFlag = isFirstPrompt ? "--session-id" : "--resume";
     const args = [
-      "--session-id", currentConversationId,
+      sessionFlag, currentConversationId,
       "-p", "--output-format", "stream-json", "--verbose",
     ];
 
@@ -217,6 +360,7 @@ wss.on("connection", (ws: WebSocket) => {
     const child = spawn("claude", args, {
       stdio: ["pipe", "pipe", "pipe"],
       env,
+      cwd: projectPath || undefined,
     });
 
     activeProcess = child;
@@ -346,6 +490,20 @@ function handleNdjsonEvent(
     sendFn({ type: "system", data: event });
     return;
   }
+}
+
+// --- API catch-all 404 ---
+app.all("/api/*", (_req, res) => {
+  res.status(404).json({ error: "Not found" });
+});
+
+// --- SPA fallback (production only) ---
+const clientDist = path.resolve(__dirname, "../client/dist");
+if (fs.existsSync(clientDist)) {
+  app.use(express.static(clientDist));
+  app.get("*", (_req, res) => {
+    res.sendFile(path.join(clientDist, "index.html"));
+  });
 }
 
 server.listen(PORT, () => {
