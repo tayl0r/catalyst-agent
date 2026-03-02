@@ -1,6 +1,6 @@
 #!/bin/sh
 # Install git hooks (worktree-safe)
-# Called automatically via npm prepare script
+# Called automatically via pnpm prepare script
 
 # Skip if not in a git repo (e.g. CI tarball installs)
 if ! git rev-parse --git-dir > /dev/null 2>&1; then

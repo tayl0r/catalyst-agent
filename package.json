@@ -3,17 +3,20 @@
   "version": "1.0.0",
   "private": true,
   "type": "module",
+  "packageManager": "pnpm@10.29.3",
   "scripts": {
-    "postinstall": "npm install --prefix server && npm install --prefix client",
     "dev": "bash scripts/dev.sh",
     "dev:stop": "bash scripts/dev-stop.sh",
-    "dev:server": "npm run dev --prefix server",
-    "dev:client": "npm run dev --prefix client",
-    "typecheck": "npm run typecheck --prefix server && npm run typecheck --prefix client",
+    "dev:server": "pnpm -C server dev",
+    "dev:client": "pnpm -C client dev",
+    "typecheck": "pnpm -C server typecheck && pnpm -C client typecheck",
     "lint": "biome check .",
     "lint:fix": "biome check --write .",
     "format": "biome format --write .",
     "prepare": "sh scripts/install-hooks.sh"
+  },
+  "pnpm": {
+    "onlyBuiltDependencies": ["esbuild"]
   },
   "devDependencies": {
     "@biomejs/biome": "2.4.4",

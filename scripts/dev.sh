@@ -26,14 +26,14 @@ echo $$ > "$PIDFILE"
 # Clean up on exit
 cleanup() {
   rm -f "$PIDFILE"
-  # Kill all processes in our group (the backgrounded npm processes)
+  # Kill all processes in our group (the backgrounded pnpm processes)
   kill -- -$$ 2>/dev/null
 }
 trap cleanup EXIT INT TERM
 
 # Start server and client (redirect stdin to prevent SIGTTIN from job control)
-npm run dev:server </dev/null &
-npm run dev:client </dev/null &
+pnpm run dev:server </dev/null &
+pnpm run dev:client </dev/null &
 
 # Wait for both
 wait

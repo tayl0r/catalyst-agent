@@ -5,20 +5,20 @@ Browser-based web interface for the Claude CLI with real-time streaming chat.
 ## Commands
 
 ```bash
-npm install          # Install root, server, and client deps (postinstall handles nested installs)
-npm run dev          # Run server + client in parallel (auto-kills previous instance via .dev.pid)
-npm run dev:stop     # Stop the running dev server
-npm run dev:server   # Server only (port 2999)
-npm run dev:client   # Client only (port 2998)
+pnpm install         # Install all workspace deps (single lockfile at root)
+pnpm run dev         # Run server + client in parallel (auto-kills previous instance via .dev.pid)
+pnpm run dev:stop    # Stop the running dev server
+pnpm run dev:server  # Server only (port 2999)
+pnpm run dev:client  # Client only (port 2998)
 ```
 
-Typecheck: `npm run typecheck` (both) / `cd server && npm run typecheck` / `cd client && npm run typecheck`
+Typecheck: `pnpm run typecheck` (both) / `cd server && pnpm run typecheck` / `cd client && pnpm run typecheck`
 
-Lint: `npm run lint` (check) / `npm run lint:fix` (auto-fix) / `npm run format` (format only)
+Lint: `pnpm run lint` (check) / `pnpm run lint:fix` (auto-fix) / `pnpm run format` (format only)
 
-Client build: `cd client && npm run build`
+Client build: `cd client && pnpm run build`
 
-Test: `npx vitest run` (once) / `npx vitest` (watch) / `npx vitest --coverage` (with coverage)
+Test: `pnpm vitest run` (once) / `pnpm vitest` (watch) / `pnpm vitest --coverage` (with coverage)
 
 ## Architecture
 
@@ -57,12 +57,12 @@ Each conversation gets a UUID. The Claude CLI is invoked with `--session-id <uui
 - **Language:** TypeScript (strict mode), ES modules throughout
 - **Client:** React 19, Vite 6, Tailwind CSS 3, react-markdown + remark-gfm
 - **Server:** Node.js, Express 4, ws (WebSocket), tsx (runtime, no build step), JSON file storage (no external DB)
-- **Root:** npm scripts with PID-tracked dev server (`.dev.pid`), auto-restart on `npm run dev`, explicit stop via `npm run dev:stop`
+- **Root:** pnpm workspaces with PID-tracked dev server (`.dev.pid`), auto-restart on `pnpm run dev`, explicit stop via `pnpm run dev:stop`
 - **Testing:** Vitest 4, @vitest/coverage-v8, config at root `vitest.config.ts`
 
 ## Pre-commit
 
-Always run `npm run lint:fix` before committing to ensure code passes linting and formatting.
+Always run `pnpm run lint:fix` before committing to ensure code passes linting and formatting.
 
 ## Code Style
 
@@ -82,7 +82,7 @@ Always run `npm run lint:fix` before committing to ensure code passes linting an
 - **NDJSON line buffering:** Claude CLI outputs newline-delimited JSON but chunks may split mid-line — server maintains a buffer and flushes incomplete lines on process close
 - **Vite proxy required:** Client dev server proxies `/ws` to the server port (see `vite.config.js`) — without this, WebSocket connections fail in dev mode
 - **Process kill flow:** SIGTERM first, then SIGKILL after 3s timeout if process doesn't exit
-- **Vite is transpile-only:** Vite does not run `tsc` — type errors won't fail the dev server or build. Run `npm run typecheck` separately
+- **Vite is transpile-only:** Vite does not run `tsc` — type errors won't fail the dev server or build. Run `pnpm run typecheck` separately
 - **Port template variables:** Projects can include `start.sh` and `PORTS` with `__PORT_1__`, `__PORT_2__`, etc. as template variables (regex `/__PORT_(\d+)__/`); `port-allocator.ts` replaces these with real port numbers and writes `.local` output files. Lines starting with `#` are treated as comments and skipped during scanning/replacement.
 
 
