@@ -5,9 +5,16 @@ interface InputAreaProps {
   onStop: () => void;
   isProcessing: boolean;
   disabled: boolean;
+  syncStatus: "idle" | "syncing" | "done" | "error";
 }
 
-export default function InputArea({ onSend, onStop, isProcessing, disabled }: InputAreaProps) {
+export default function InputArea({
+  onSend,
+  onStop,
+  isProcessing,
+  disabled,
+  syncStatus,
+}: InputAreaProps) {
   const [text, setText] = useState("");
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
 
@@ -61,7 +68,7 @@ export default function InputArea({ onSend, onStop, isProcessing, disabled }: In
             disabled={disabled || !text.trim()}
             className="rounded-xl bg-blue-600 px-4 py-3 font-medium text-white hover:bg-blue-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
           >
-            Send
+            {syncStatus === "syncing" ? "Syncing..." : "Send"}
           </button>
         )}
       </div>
