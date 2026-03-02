@@ -1,0 +1,7 @@
+# Port Assignments
+
+This file defines the port template variables for cc-web.
+Each __PORT_N__ variable will be replaced with a real port number in PORTS.LOCAL.
+
+__PORT_1__: Express + WebSocket server
+__PORT_2__: Vite dev server (proxies /ws and /api to __PORT_1__)

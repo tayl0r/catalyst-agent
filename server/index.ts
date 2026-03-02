@@ -909,7 +909,7 @@ wss.on("connection", (ws: WebSocket) => {
       }
 
       // Re-try port allocation if worktree exists but no ports
-      // (e.g. setup prompt just created start.sh + PORTS.md)
+      // (e.g. setup prompt just created start.sh + PORTS)
       if (isActive && convId) {
         const doneConv = getConversation(convId);
         if (

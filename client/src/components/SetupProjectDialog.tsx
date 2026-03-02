@@ -30,8 +30,8 @@ export default function SetupProjectDialog({
         </h2>
         <p className="text-sm text-gray-300 mb-6">
           This project hasn't been set up for Catalyst Agent yet. Click OK to add setup instructions
-          to your prompt — Claude will create start.sh and PORTS.md with the right port
-          configuration for this project.
+          to your prompt — Claude will create start.sh and PORTS with the right port configuration
+          for this project.
         </p>
         <div className="flex justify-end gap-2">
           <button

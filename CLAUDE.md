@@ -79,12 +79,12 @@ Always run `npm run lint:fix` before committing to ensure code passes linting an
 - **Vite proxy required:** Client dev server proxies `/ws` to the server port (see `vite.config.js`) — without this, WebSocket connections fail in dev mode
 - **Process kill flow:** SIGTERM first, then SIGKILL after 3s timeout if process doesn't exit
 - **Vite is transpile-only:** Vite does not run `tsc` — type errors won't fail the dev server or build. Run `npm run typecheck` separately
-- **Port template variables:** Projects can include `start.sh` and `PORTS.md` with `__PORT_1__`, `__PORT_2__`, etc. as template variables (regex `/__PORT_(\d+)__/`); `port-allocator.ts` replaces these with real port numbers and writes `.local` output files
+- **Port template variables:** Projects can include `start.sh` and `PORTS` with `__PORT_1__`, `__PORT_2__`, etc. as template variables (regex `/__PORT_(\d+)__/`); `port-allocator.ts` replaces these with real port numbers and writes `.local` output files. Lines starting with `#` are treated as comments and skipped during scanning/replacement.
 - **No tests:** Project has no test infrastructure — all testing is manual
 
 
 # Dev Server Ports
 
-Your dev server ports are defined in PORTS.LOCAL.md (auto-generated per worktree).
-Start the server with start.local.sh. Do not edit PORTS.LOCAL.md or start.local.sh
-directly — edit PORTS.md and start.sh (using __PORT_N__ template variables) instead.
+Your dev server ports are defined in PORTS.LOCAL (auto-generated per worktree).
+Start the server with start.local.sh. Do not edit PORTS.LOCAL or start.local.sh
+directly — edit PORTS and start.sh (using __PORT_N__ template variables) instead.

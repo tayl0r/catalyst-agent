@@ -16,4 +16,4 @@ src-tauri/gen/
 server/data/
 .dev.pid
 start.local.sh
-PORTS.LOCAL.md
+PORTS.LOCAL
