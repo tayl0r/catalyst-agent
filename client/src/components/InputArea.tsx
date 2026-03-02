@@ -6,6 +6,8 @@ interface InputAreaProps {
   isProcessing: boolean;
   disabled: boolean;
   syncStatus: "idle" | "syncing" | "done" | "error";
+  pendingText?: { text: string; key: number } | null;
+  onPendingTextConsumed?: () => void;
 }
 
 export default function InputArea({
@@ -14,9 +16,21 @@ export default function InputArea({
   isProcessing,
   disabled,
   syncStatus,
+  pendingText,
+  onPendingTextConsumed,
 }: InputAreaProps) {
   const [text, setText] = useState("");
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
+
+  const onPendingTextConsumedRef = useRef(onPendingTextConsumed);
+  onPendingTextConsumedRef.current = onPendingTextConsumed;
+
+  useEffect(() => {
+    if (pendingText) {
+      setText(pendingText.text);
+      onPendingTextConsumedRef.current?.();
+    }
+  }, [pendingText]);
 
   useEffect(() => {
     if (textareaRef.current) {
