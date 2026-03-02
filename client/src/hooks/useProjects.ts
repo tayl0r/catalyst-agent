@@ -23,6 +23,26 @@ export default function useProjects(): UseProjectsReturn {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
+  async function apiCall<T>(
+    url: string,
+    options: RequestInit = {},
+  ): Promise<{ ok: true; data: T } | { ok: false }> {
+    try {
+      const res = await fetch(url, options);
+      if (!res.ok) {
+        const body = await res.json();
+        setError(body.error || `HTTP ${res.status}`);
+        return { ok: false };
+      }
+      const data = res.status === 204 ? (undefined as T) : ((await res.json()) as T);
+      setError(null);
+      return { ok: true, data };
+    } catch (err) {
+      setError((err as Error).message);
+      return { ok: false };
+    }
+  }
+
   const refresh = useCallback(() => {
     setLoading(true);
     setError(null);
@@ -45,78 +65,46 @@ export default function useProjects(): UseProjectsReturn {
     refresh();
   }, [refresh]);
 
-  const createProjectFn = useCallback(
+  const createProject = useCallback(
     async (data: {
       name: string;
       description?: string;
       color?: string;
     }): Promise<Project | null> => {
-      try {
-        const res = await fetch("/api/projects", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(data),
-        });
-        if (!res.ok) {
-          const body = await res.json();
-          setError(body.error || `HTTP ${res.status}`);
-          return null;
-        }
-        const project: Project = await res.json();
-        setProjects((prev) => [...prev, project]);
-        setError(null);
-        return project;
-      } catch (err) {
-        setError((err as Error).message);
-        return null;
-      }
+      const result = await apiCall<Project>("/api/projects", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(data),
+      });
+      if (!result.ok) return null;
+      setProjects((prev) => [...prev, result.data]);
+      return result.data;
     },
     [],
   );
 
-  const updateProjectFn = useCallback(
+  const updateProject = useCallback(
     async (
       id: string,
       data: Partial<Pick<Project, "name" | "path" | "description" | "color">>,
     ): Promise<Project | null> => {
-      try {
-        const res = await fetch(`/api/projects/${id}`, {
-          method: "PUT",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(data),
-        });
-        if (!res.ok) {
-          const body = await res.json();
-          setError(body.error || `HTTP ${res.status}`);
-          return null;
-        }
-        const updated: Project = await res.json();
-        setProjects((prev) => prev.map((p) => (p.id === id ? updated : p)));
-        setError(null);
-        return updated;
-      } catch (err) {
-        setError((err as Error).message);
-        return null;
-      }
+      const result = await apiCall<Project>(`/api/projects/${id}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(data),
+      });
+      if (!result.ok) return null;
+      setProjects((prev) => prev.map((p) => (p.id === id ? result.data : p)));
+      return result.data;
     },
     [],
   );
 
-  const deleteProjectFn = useCallback(async (id: string): Promise<boolean> => {
-    try {
-      const res = await fetch(`/api/projects/${id}`, { method: "DELETE" });
-      if (!res.ok) {
-        const body = await res.json();
-        setError(body.error || `HTTP ${res.status}`);
-        return false;
-      }
-      setProjects((prev) => prev.filter((p) => p.id !== id));
-      setError(null);
-      return true;
-    } catch (err) {
-      setError((err as Error).message);
-      return false;
-    }
+  const deleteProject = useCallback(async (id: string): Promise<boolean> => {
+    const result = await apiCall<undefined>(`/api/projects/${id}`, { method: "DELETE" });
+    if (!result.ok) return false;
+    setProjects((prev) => prev.filter((p) => p.id !== id));
+    return true;
   }, []);
 
   return {
@@ -124,8 +112,8 @@ export default function useProjects(): UseProjectsReturn {
     loading,
     error,
     refresh,
-    createProject: createProjectFn,
-    updateProject: updateProjectFn,
-    deleteProject: deleteProjectFn,
+    createProject,
+    updateProject,
+    deleteProject,
   };
 }

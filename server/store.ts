@@ -14,24 +14,20 @@ const CONVERSATIONS_DIR = path.join(DATA_DIR, "conversations");
 // read-modify-write sequences execute atomically with respect to the event
 // loop — no interleaving is possible within a single process.
 
-export function isValidConversationId(id: string): boolean {
-  return isValidId(id);
-}
-
 function ensureDirs(): void {
   fs.mkdirSync(MESSAGES_DIR, { recursive: true });
   fs.mkdirSync(CONVERSATIONS_DIR, { recursive: true });
 }
 
 function messagesPath(conversationId: string): string {
-  if (!isValidConversationId(conversationId)) {
+  if (!isValidId(conversationId)) {
     throw new Error("Invalid conversation ID");
   }
   return path.join(MESSAGES_DIR, `${conversationId}.json`);
 }
 
 function conversationPath(id: string): string {
-  if (!isValidConversationId(id)) {
+  if (!isValidId(id)) {
     throw new Error("Invalid conversation ID");
   }
   return path.join(CONVERSATIONS_DIR, `${id}.json`);
@@ -78,7 +74,7 @@ export function loadConversations(): Conversation[] {
 }
 
 export function getConversation(id: string): Conversation | undefined {
-  if (!isValidConversationId(id)) return undefined;
+  if (!isValidId(id)) return undefined;
   return conversationIndex.get(id);
 }
 
@@ -98,7 +94,7 @@ export function createConversation(
   slug: string,
   projectId: string,
 ): Conversation {
-  if (!isValidConversationId(id)) {
+  if (!isValidId(id)) {
     throw new Error("Invalid conversation ID");
   }
   const now = new Date().toISOString();
@@ -120,7 +116,7 @@ function saveConversation(conv: Conversation): void {
 }
 
 function patchConversation(id: string, apply: (conv: Conversation) => void): void {
-  if (!isValidConversationId(id)) return;
+  if (!isValidId(id)) return;
   const conv = conversationIndex.get(id);
   if (!conv) return;
   apply(conv);
@@ -164,20 +160,19 @@ export function getAllUsedPorts(): Set<number> {
 }
 
 export function archiveConversation(id: string): Conversation | undefined {
-  if (!isValidConversationId(id)) return undefined;
-  const conv = conversationIndex.get(id);
-  if (!conv) return undefined;
-  conv.archived = true;
-  conv.worktreeCwd = undefined;
-  conv.ports = undefined;
-  conv.devServerStatus = undefined;
-  conv.updated_at = new Date().toISOString();
-  atomicWrite(conversationPath(id), JSON.stringify(conv, null, 2));
-  return conv;
+  if (!isValidId(id)) return undefined;
+  patchConversation(id, (conv) => {
+    conv.archived = true;
+    conv.worktreeCwd = undefined;
+    conv.ports = undefined;
+    conv.devServerStatus = undefined;
+    conv.updated_at = new Date().toISOString();
+  });
+  return conversationIndex.get(id);
 }
 
 export function deleteConversation(id: string): void {
-  if (!isValidConversationId(id)) return;
+  if (!isValidId(id)) return;
   conversationIndex.delete(id);
   try {
     fs.unlinkSync(conversationPath(id));

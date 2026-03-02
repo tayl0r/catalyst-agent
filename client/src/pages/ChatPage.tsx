@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import ChatMessage from "../components/ChatMessage";
 import InputArea from "../components/InputArea";
@@ -8,6 +8,7 @@ import SetupProjectDialog from "../components/SetupProjectDialog";
 import Sidebar from "../components/Sidebar";
 import StatusIndicator from "../components/StatusIndicator";
 import { SETUP_PROMPT } from "../constants";
+import useAutoScroll from "../hooks/useAutoScroll";
 import useProjects from "../hooks/useProjects";
 import useWebSocket from "../hooks/useWebSocket";
 
@@ -45,26 +46,14 @@ export default function ChatPage() {
   const [showSetupDialog, setShowSetupDialog] = useState(false);
   const [pendingText, setPendingText] = useState<{ text: string; key: number } | null>(null);
   const [initialProjectId, setInitialProjectId] = useState<string | null>(null);
-  const messagesEndRef = useRef<HTMLDivElement | null>(null);
-  const scrollContainerRef = useRef<HTMLElement | null>(null);
-  const isNearBottomRef = useRef(true);
+  const {
+    containerRef: scrollContainerRef,
+    handleScroll,
+    isNearBottomRef,
+  } = useAutoScroll([messages], { threshold: 80 });
   const draftMapRef = useRef<Map<string, string>>(new Map());
   const inputTextRef = useRef("");
   const prevConversationIdRef = useRef<string | null>(null);
-
-  const handleScroll = useCallback(() => {
-    const el = scrollContainerRef.current;
-    if (!el) return;
-    isNearBottomRef.current = el.scrollHeight - el.scrollTop - el.clientHeight < 80;
-  }, []);
-
-  useEffect(() => {
-    if (!isNearBottomRef.current) return;
-    const el = scrollContainerRef.current;
-    if (el) {
-      el.scrollTop = el.scrollHeight;
-    }
-  }, [messages]);
 
   // Reset scroll-to-bottom on conversation switch
   useEffect(() => {
@@ -131,9 +120,9 @@ export default function ChatPage() {
       <Sidebar
         conversations={conversations}
         currentId={currentConversation?.id ?? null}
-        onSelect={(id) => startConversation(id)}
+        onSelect={startConversation}
         onNew={handleNew}
-        onDelete={(id) => deleteConversation(id)}
+        onDelete={deleteConversation}
         projects={projects}
         filterProjectId={filterProjectId}
         onFilterProject={setFilterProjectId}
@@ -315,7 +304,7 @@ export default function ChatPage() {
                 {messages.map((msg) => (
                   <ChatMessage key={msg.id} message={msg} onSend={sendPrompt} />
                 ))}
-                <div ref={messagesEndRef} />
+                <div />
               </div>
             </main>
 
