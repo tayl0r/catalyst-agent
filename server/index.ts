@@ -179,6 +179,21 @@ function killCLIProcess(conversationId: string): void {
   }, 3000);
 }
 
+async function removeWorktree(
+  worktreeCwd: string,
+  projectRoot: string,
+  label: string,
+): Promise<void> {
+  try {
+    await execFileAsync("git", ["worktree", "remove", worktreeCwd, "--force"], {
+      cwd: projectRoot,
+      timeout: 15000,
+    });
+  } catch (err) {
+    console.warn(`${label}: worktree remove failed: ${(err as Error).message}`);
+  }
+}
+
 // --- Startup migration ---
 populateFromDirectory(process.env.ROOT_PROJECT_DIR || "~/dev");
 
@@ -363,8 +378,16 @@ wss.on("connection", (ws: WebSocket) => {
         send({ type: "error", data: "Invalid conversation ID" });
         return;
       }
+      // Read conversation before deleting so we can clean up the worktree
+      const delConv = getConversation(parsed.conversationId);
       killCLIProcess(parsed.conversationId);
       killServerProcess(parsed.conversationId);
+      if (delConv?.worktreeCwd && delConv.projectId) {
+        const projectRoot = getProjectPath(delConv.projectId);
+        if (projectRoot) {
+          await removeWorktree(delConv.worktreeCwd, projectRoot, "DELETE");
+        }
+      }
       deleteConv(parsed.conversationId);
       // If we deleted the current conversation, reset state
       if (currentConversationId === parsed.conversationId) {
@@ -398,30 +421,11 @@ wss.on("connection", (ws: WebSocket) => {
       // Stop CLI and dev server
       killCLIProcess(parsed.conversationId);
       killServerProcess(parsed.conversationId);
-      // Remove worktree and branch asynchronously.
-      // Branch name is assumed to match conv.slug (set via `claude -w <slug>`).
-      // If the CLI used a different name, the branch delete will fail and log a warning.
-      const worktreeCwd = cleanupConv.worktreeCwd;
-      const branchName = cleanupConv.slug;
-      const cleanupProjectRoot = cleanupConv.projectId
-        ? getProjectPath(cleanupConv.projectId)
-        : undefined;
-      if (worktreeCwd && cleanupProjectRoot) {
-        try {
-          await execFileAsync("git", ["worktree", "remove", worktreeCwd, "--force"], {
-            cwd: cleanupProjectRoot,
-            timeout: 15000,
-          });
-        } catch (err) {
-          console.warn(`CLEANUP: worktree remove failed: ${(err as Error).message}`);
-        }
-        try {
-          await execFileAsync("git", ["branch", "-D", branchName], {
-            cwd: cleanupProjectRoot,
-            timeout: 5000,
-          });
-        } catch (err) {
-          console.warn(`CLEANUP: branch delete failed: ${(err as Error).message}`);
+      // Remove worktree asynchronously (branch is preserved for later reference).
+      if (cleanupConv.worktreeCwd && cleanupConv.projectId) {
+        const cleanupProjectRoot = getProjectPath(cleanupConv.projectId);
+        if (cleanupProjectRoot) {
+          await removeWorktree(cleanupConv.worktreeCwd, cleanupProjectRoot, "CLEANUP");
         }
       }
       // Archive the conversation (clears worktreeCwd, ports, devServerStatus)
