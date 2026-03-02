@@ -48,6 +48,9 @@ export default function ChatPage() {
   const messagesEndRef = useRef<HTMLDivElement | null>(null);
   const scrollContainerRef = useRef<HTMLElement | null>(null);
   const isNearBottomRef = useRef(true);
+  const draftMapRef = useRef<Map<string, string>>(new Map());
+  const inputTextRef = useRef("");
+  const prevConversationIdRef = useRef<string | null>(null);
 
   const handleScroll = useCallback(() => {
     const el = scrollContainerRef.current;
@@ -66,6 +69,26 @@ export default function ChatPage() {
   // Reset scroll-to-bottom on conversation switch
   useEffect(() => {
     isNearBottomRef.current = true;
+  }, [currentConversation?.id]);
+
+  // Save/restore input drafts when switching conversations
+  useEffect(() => {
+    const prevId = prevConversationIdRef.current;
+    const newId = currentConversation?.id ?? null;
+
+    // Save draft for outgoing conversation
+    if (prevId) {
+      draftMapRef.current.set(prevId, inputTextRef.current);
+    }
+
+    // Restore draft for incoming conversation
+    if (newId) {
+      const draft = draftMapRef.current.get(newId) ?? "";
+      setPendingText({ text: draft, key: Date.now() });
+      inputTextRef.current = draft;
+    }
+
+    prevConversationIdRef.current = newId;
   }, [currentConversation?.id]);
 
   // Auto-open server panel when switching to a conversation with an active server
@@ -307,6 +330,7 @@ export default function ChatPage() {
               syncStatus={syncStatus}
               pendingText={pendingText}
               onPendingTextConsumed={() => setPendingText(null)}
+              inputTextRef={inputTextRef}
             />
           </div>
 
