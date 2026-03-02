@@ -125,6 +125,26 @@ export function setWorktreeCwd(id: string, cwd: string): void {
   atomicWrite(conversationPath(id), JSON.stringify(conv, null, 2));
 }
 
+export function setConversationPorts(id: string, ports: Record<string, number>): void {
+  if (!isValidConversationId(id)) return;
+  const conv = conversationIndex.get(id);
+  if (!conv) return;
+  conv.ports = ports;
+  atomicWrite(conversationPath(id), JSON.stringify(conv, null, 2));
+}
+
+export function getAllUsedPorts(): Set<number> {
+  const used = new Set<number>();
+  for (const conv of conversationIndex.values()) {
+    if (conv.ports) {
+      for (const port of Object.values(conv.ports)) {
+        used.add(port);
+      }
+    }
+  }
+  return used;
+}
+
 export function deleteConversation(id: string): void {
   if (!isValidConversationId(id)) return;
   conversationIndex.delete(id);

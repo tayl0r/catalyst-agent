@@ -14,3 +14,4 @@ src-tauri/gen/
 .claude/worktrees/
 .worktrees/
 server/data/
+.dev.pid

@@ -3,6 +3,7 @@ import { useLocation, useNavigate } from "react-router-dom";
 import ChatMessage from "../components/ChatMessage";
 import InputArea from "../components/InputArea";
 import NewConversationModal from "../components/NewConversationModal";
+import ServerPanel from "../components/ServerPanel";
 import Sidebar from "../components/Sidebar";
 import StatusIndicator from "../components/StatusIndicator";
 import useProjects from "../hooks/useProjects";
@@ -15,11 +16,16 @@ export default function ChatPage() {
     isProcessing,
     currentConversation,
     conversations,
+    serverStatus,
+    serverLogs,
+    serverPorts,
     sendPrompt,
     killProcess,
     createConversation,
     startConversation,
     deleteConversation,
+    startServer,
+    stopServer,
   } = useWebSocket();
 
   const { projects } = useProjects();
@@ -31,6 +37,7 @@ export default function ChatPage() {
   const navigate = useNavigate();
   const [filterProjectId, setFilterProjectId] = useState<string | null>(null);
   const [showNewModal, setShowNewModal] = useState(false);
+  const [showServerPanel, setShowServerPanel] = useState(false);
   const [initialProjectId, setInitialProjectId] = useState<string | null>(null);
   const messagesEndRef = useRef<HTMLDivElement | null>(null);
 
@@ -106,33 +113,100 @@ export default function ChatPage() {
               </div>
             )}
           </div>
-          <StatusIndicator status={status} />
+          <div className="flex items-center gap-2">
+            {serverPorts && (
+              <>
+                {serverStatus === "stopped" ? (
+                  <button
+                    type="button"
+                    onClick={startServer}
+                    className="flex items-center gap-1 rounded px-2 py-1 text-xs text-green-400 hover:bg-gray-800 transition-colors"
+                    title="Start dev server"
+                  >
+                    <svg
+                      className="h-3.5 w-3.5"
+                      fill="currentColor"
+                      viewBox="0 0 24 24"
+                      aria-hidden="true"
+                    >
+                      <path d="M8 5v14l11-7z" />
+                    </svg>
+                    Start
+                  </button>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={stopServer}
+                    disabled={serverStatus === "stopping"}
+                    className="flex items-center gap-1 rounded px-2 py-1 text-xs text-red-400 hover:bg-gray-800 transition-colors disabled:opacity-50"
+                    title="Stop dev server"
+                  >
+                    <svg
+                      className="h-3.5 w-3.5"
+                      fill="currentColor"
+                      viewBox="0 0 24 24"
+                      aria-hidden="true"
+                    >
+                      <rect x="6" y="6" width="12" height="12" />
+                    </svg>
+                    Stop
+                  </button>
+                )}
+                <button
+                  type="button"
+                  onClick={() => setShowServerPanel((v) => !v)}
+                  className={`rounded px-2 py-1 text-xs transition-colors ${
+                    showServerPanel
+                      ? "bg-gray-800 text-gray-200"
+                      : "text-gray-400 hover:bg-gray-800 hover:text-gray-300"
+                  }`}
+                  title="Toggle server logs"
+                >
+                  Logs
+                </button>
+              </>
+            )}
+            <StatusIndicator status={status} />
+          </div>
         </header>
 
-        {/* Messages */}
-        <main className="flex-1 overflow-y-auto px-4 py-6">
-          <div className="mx-auto max-w-5xl space-y-4">
-            {messages.length === 0 && (
-              <div className="flex h-full items-center justify-center pt-32">
-                <p className="text-gray-600 text-sm">
-                  Create a conversation to start chatting with Claude.
-                </p>
+        <div className="flex flex-1 overflow-hidden">
+          <div className="flex flex-1 flex-col min-w-0">
+            {/* Messages */}
+            <main className="flex-1 overflow-y-auto px-4 py-6">
+              <div className="mx-auto max-w-5xl space-y-4">
+                {messages.length === 0 && (
+                  <div className="flex h-full items-center justify-center pt-32">
+                    <p className="text-gray-600 text-sm">
+                      Create a conversation to start chatting with Claude.
+                    </p>
+                  </div>
+                )}
+                {messages.map((msg) => (
+                  <ChatMessage key={msg.id} message={msg} onSend={sendPrompt} />
+                ))}
+                <div ref={messagesEndRef} />
               </div>
-            )}
-            {messages.map((msg) => (
-              <ChatMessage key={msg.id} message={msg} onSend={sendPrompt} />
-            ))}
-            <div ref={messagesEndRef} />
-          </div>
-        </main>
+            </main>
 
-        {/* Input */}
-        <InputArea
-          onSend={sendPrompt}
-          onStop={killProcess}
-          isProcessing={isProcessing}
-          disabled={status !== "connected" || !currentConversation}
-        />
+            {/* Input */}
+            <InputArea
+              onSend={sendPrompt}
+              onStop={killProcess}
+              isProcessing={isProcessing}
+              disabled={status !== "connected" || !currentConversation}
+            />
+          </div>
+
+          {showServerPanel && (
+            <ServerPanel
+              logs={serverLogs}
+              status={serverStatus}
+              ports={serverPorts}
+              onClose={() => setShowServerPanel(false)}
+            />
+          )}
+        </div>
       </div>
 
       <NewConversationModal

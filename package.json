@@ -5,7 +5,8 @@
   "type": "module",
   "scripts": {
     "postinstall": "npm install --prefix server && npm install --prefix client",
-    "dev": "concurrently -n server,client -c blue,green \"npm run dev --prefix server\" \"npm run dev --prefix client\"",
+    "dev": "bash scripts/dev.sh",
+    "dev:stop": "bash scripts/dev-stop.sh",
     "dev:server": "npm run dev --prefix server",
     "dev:client": "npm run dev --prefix client",
     "typecheck": "npm run typecheck --prefix server && npm run typecheck --prefix client",
@@ -15,7 +16,6 @@
     "prepare": "sh scripts/install-hooks.sh"
   },
   "devDependencies": {
-    "@biomejs/biome": "2.4.4",
-    "concurrently": "^9.1.2"
+    "@biomejs/biome": "2.4.4"
   }
 }

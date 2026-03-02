@@ -1,4 +1,4 @@
-import { PORT_INCREMENT, PROJECT_COLORS } from "@shared/types";
+import { PROJECT_COLORS } from "@shared/types";
 import { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import useProjects from "../hooks/useProjects";
@@ -179,9 +179,6 @@ export default function ProjectsPage() {
                 <div className="min-w-0 flex-1">
                   <p className="text-sm font-medium truncate">{project.name}</p>
                   <p className="text-xs text-gray-500 truncate">{project.path}</p>
-                  <p className="text-xs text-gray-500">
-                    Ports {project.port}&ndash;{project.port + PORT_INCREMENT - 1}
-                  </p>
                   {project.description && (
                     <p className="text-xs text-gray-400 mt-0.5 truncate">{project.description}</p>
                   )}

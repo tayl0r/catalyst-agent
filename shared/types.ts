@@ -7,9 +7,12 @@ export interface Conversation {
   title: string; // TODO: remove once migration is complete — kept for compat, set equal to name
   projectId: string;
   worktreeCwd?: string; // cwd reported by Claude CLI init event (worktree path)
+  ports?: Record<string, number>; // allocated port numbers (e.g. { PORT1: 3247 })
   created_at: string;
   updated_at: string;
 }
+
+export type DevServerStatus = "stopped" | "starting" | "running" | "stopping";
 
 export function slugify(input: string): string {
   return (
@@ -27,12 +30,9 @@ export interface Project {
   id: string;
   name: string;
   path: string;
-  port: number;
   description?: string;
   color: string; // hex color e.g. "#3b82f6"
 }
-
-export const PORT_INCREMENT = 50;
 
 export const PROJECT_COLORS = [
   "#3b82f6", // blue
@@ -78,13 +78,23 @@ export interface DeleteConversationMessage {
   conversationId: string;
 }
 
+export interface StartServerMessage {
+  type: "start_server";
+}
+
+export interface StopServerMessage {
+  type: "stop_server";
+}
+
 export type ClientMessage =
   | PromptMessage
   | KillMessage
   | CreateConversationMessage
   | StartMessage
   | ListConversationsMessage
-  | DeleteConversationMessage;
+  | DeleteConversationMessage
+  | StartServerMessage
+  | StopServerMessage;
 
 // --- Server-to-client messages ---
 
@@ -152,6 +162,20 @@ export interface MessagesMessage {
   messages: UIMessage[];
 }
 
+export interface ServerOutputMessage {
+  type: "server_output";
+  conversationId: string;
+  data: string;
+  stream: "stdout" | "stderr";
+}
+
+export interface ServerStatusMessage {
+  type: "server_status";
+  conversationId: string;
+  status: DevServerStatus;
+  ports?: Record<string, number>;
+}
+
 export type ServerMessage =
   | TextMessage
   | AssistantMessage
@@ -163,7 +187,9 @@ export type ServerMessage =
   | ConversationMessage
   | ConversationListMessage
   | ConversationDeletedMessage
-  | MessagesMessage;
+  | MessagesMessage
+  | ServerOutputMessage
+  | ServerStatusMessage;
 
 // --- Client-side UI message types (different from wire types) ---
 
@@ -225,6 +251,8 @@ export function isClientMessage(msg: unknown): msg is ClientMessage {
   if (obj.type === "start" && typeof obj.conversationId === "string") return true;
   if (obj.type === "list_conversations") return true;
   if (obj.type === "delete_conversation" && typeof obj.conversationId === "string") return true;
+  if (obj.type === "start_server") return true;
+  if (obj.type === "stop_server") return true;
   return false;
 }
 
@@ -240,6 +268,8 @@ const SERVER_MESSAGE_TYPES: ReadonlySet<string> = new Set([
   "conversation_list",
   "conversation_deleted",
   "messages",
+  "server_output",
+  "server_status",
 ]);
 
 export function isServerMessage(msg: unknown): msg is ServerMessage {

@@ -1,4 +1,10 @@
-import type { ConnectionStatus, Conversation, ServerMessage, UIMessage } from "@shared/types";
+import type {
+  ConnectionStatus,
+  Conversation,
+  DevServerStatus,
+  ServerMessage,
+  UIMessage,
+} from "@shared/types";
 import { isServerMessage } from "@shared/types";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { filterEvent } from "../utils/filterEvent";
@@ -18,11 +24,16 @@ interface UseWebSocketReturn {
   isProcessing: boolean;
   currentConversation: Conversation | null;
   conversations: Conversation[];
+  serverStatus: DevServerStatus;
+  serverLogs: string[];
+  serverPorts: Record<string, number> | null;
   sendPrompt: (text: string) => void;
   killProcess: () => void;
   createConversation: (name: string, projectId: string) => void;
   startConversation: (conversationId: string) => void;
   deleteConversation: (conversationId: string) => void;
+  startServer: () => void;
+  stopServer: () => void;
 }
 
 export default function useWebSocket(): UseWebSocketReturn {
@@ -31,6 +42,9 @@ export default function useWebSocket(): UseWebSocketReturn {
   const [isProcessing, setIsProcessing] = useState(false);
   const [currentConversation, setCurrentConversation] = useState<Conversation | null>(null);
   const [conversations, setConversations] = useState<Conversation[]>([]);
+  const [serverStatus, setServerStatus] = useState<DevServerStatus>("stopped");
+  const [serverLogs, setServerLogs] = useState<string[]>([]);
+  const [serverPorts, setServerPorts] = useState<Record<string, number> | null>(null);
 
   const wsRef = useRef<WebSocket | null>(null);
   const reconnectDelay = useRef(RECONNECT_MIN);
@@ -176,6 +190,9 @@ export default function useWebSocket(): UseWebSocketReturn {
           break;
 
         case "conversation":
+          // Update ref immediately so subsequent messages in the same
+          // event loop tick (e.g. server_status) can filter correctly
+          currentConversationRef.current = msg.conversation;
           setCurrentConversation(msg.conversation);
           break;
 
@@ -210,6 +227,20 @@ export default function useWebSocket(): UseWebSocketReturn {
               return m;
             }),
           );
+          break;
+
+        case "server_output":
+          if (msg.conversationId !== currentConversationRef.current?.id) break;
+          setServerLogs((prev) => {
+            const next = [...prev, msg.data];
+            return next.length > 5000 ? next.slice(-5000) : next;
+          });
+          break;
+
+        case "server_status":
+          if (msg.conversationId !== currentConversationRef.current?.id) break;
+          setServerStatus(msg.status);
+          if (msg.ports) setServerPorts(msg.ports);
           break;
 
         default:
@@ -286,6 +317,9 @@ export default function useWebSocket(): UseWebSocketReturn {
       streamingTextRef.current = "";
       setMessages([]);
       setCurrentConversation(null);
+      setServerStatus("stopped");
+      setServerLogs([]);
+      setServerPorts(null);
       wsSend({ type: "create_conversation", name, projectId });
     },
     [wsSend],
@@ -298,6 +332,9 @@ export default function useWebSocket(): UseWebSocketReturn {
       setIsProcessing(false);
       streamingTextRef.current = "";
       setMessages([]);
+      setServerStatus("stopped");
+      setServerLogs([]);
+      setServerPorts(null);
       wsSend({ type: "start", conversationId });
     },
     [wsSend],
@@ -319,16 +356,30 @@ export default function useWebSocket(): UseWebSocketReturn {
     [wsSend],
   );
 
+  const startServer = useCallback(() => {
+    setServerLogs([]);
+    wsSend({ type: "start_server" });
+  }, [wsSend]);
+
+  const stopServer = useCallback(() => {
+    wsSend({ type: "stop_server" });
+  }, [wsSend]);
+
   return {
     status,
     messages,
     isProcessing,
     currentConversation,
     conversations,
+    serverStatus,
+    serverLogs,
+    serverPorts,
     sendPrompt,
     killProcess,
     createConversation,
     startConversation,
     deleteConversation,
+    startServer,
+    stopServer,
   };
 }

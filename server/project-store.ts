@@ -5,7 +5,7 @@ import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import type { Project } from "@shared/types.js";
-import { PORT_INCREMENT, PROJECT_COLORS } from "@shared/types.js";
+import { PROJECT_COLORS } from "@shared/types.js";
 import { atomicWrite, isValidId, readJson } from "./utils.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -25,24 +25,8 @@ export function expandTilde(p: string): string {
 
 ensureDir();
 
-function getNextPort(projects: Project[]): number {
-  const ports = projects.map((p) => p.port).filter((p): p is number => p != null);
-  if (ports.length === 0) return 3000;
-  return Math.max(...ports) + PORT_INCREMENT;
-}
-
 export function loadProjects(): Project[] {
-  const projects = readJson<Project[]>(PROJECTS_FILE, []);
-  // One-time backfill: assign ports to projects that lack them
-  if (projects.length > 0 && projects.some((p) => p.port == null)) {
-    for (let i = 0; i < projects.length; i++) {
-      if (projects[i].port == null) {
-        projects[i].port = 3000 + i * PORT_INCREMENT;
-      }
-    }
-    atomicWrite(PROJECTS_FILE, JSON.stringify(projects, null, 2));
-  }
-  return projects;
+  return readJson<Project[]>(PROJECTS_FILE, []);
 }
 
 export function getProject(id: string): Project | undefined {
@@ -50,12 +34,16 @@ export function getProject(id: string): Project | undefined {
   return loadProjects().find((p) => p.id === id);
 }
 
-function writeClaudeMd(projectPath: string, startPort: number): void {
-  const endPort = startPort + PORT_INCREMENT - 1;
+function writeClaudeMd(projectPath: string): void {
   const section = [
     "# Catalyst Agent",
     "",
-    `This project is managed by Catalyst Agent (a project configuration management app). It has assigned you ports ${startPort}-${endPort}. When you create any launch files or server configs, DO NOT use any ports outside of that range.`,
+    "This project is managed by Catalyst Agent. Your dev server ports are defined in",
+    "PORTS.LOCAL.md (auto-generated per worktree). Start the server with start.local.sh.",
+    "If you need to change how the server is started, edit both start.sh (using PORTn",
+    "template vars) and start.local.sh (using real port numbers).",
+    "If you need additional ports while making changes, add another entry to PORTS.md",
+    "and PORTS.LOCAL.md.",
   ].join("\n");
 
   try {
@@ -110,11 +98,20 @@ function scaffoldProject(projectPath: string): void {
       }
     }
 
-    // 2. .gitignore (only if git repo exists, skip if file exists)
+    // 2. .gitignore (only if git repo exists, create or append)
     if (hasGit) {
       const gitignorePath = path.join(projectPath, ".gitignore");
+      const localEntries = "start.local.sh\nPORTS.LOCAL.md\n";
       if (!fs.existsSync(gitignorePath)) {
-        atomicWrite(gitignorePath, "node_modules/\n.env\n.env.local\n.DS_Store\n*.log\n");
+        atomicWrite(
+          gitignorePath,
+          `node_modules/\n.env\n.env.local\n.DS_Store\n*.log\n${localEntries}`,
+        );
+      } else {
+        const existing = fs.readFileSync(gitignorePath, "utf8");
+        if (!existing.includes("start.local.sh")) {
+          atomicWrite(gitignorePath, `${existing.trimEnd()}\n${localEntries}`);
+        }
       }
     }
 
@@ -147,7 +144,45 @@ function scaffoldProject(projectPath: string): void {
       atomicWrite(claudeignorePath, "node_modules/\n*.log\n");
     }
 
-    // 5. Commit scaffolded files (only for freshly created repos)
+    // 5. start.sh template (skip if exists)
+    const startShPath = path.join(projectPath, "start.sh");
+    if (!fs.existsSync(startShPath)) {
+      atomicWrite(
+        startShPath,
+        [
+          "#!/bin/bash",
+          "# Dev server start script for this project.",
+          "# Use PORT1, PORT2, etc. as template variables — they will be replaced",
+          "# with real port numbers in start.local.sh (auto-generated per worktree).",
+          "# Update this file to configure how your dev server starts.",
+          "",
+          'echo "No dev server configured. Edit start.sh to add your start command."',
+          'echo "Available ports: PORT1"',
+          "",
+        ].join("\n"),
+      );
+      fs.chmodSync(startShPath, 0o755);
+    }
+
+    // 6. PORTS.md template (skip if exists)
+    const portsMdPath = path.join(projectPath, "PORTS.md");
+    if (!fs.existsSync(portsMdPath)) {
+      atomicWrite(
+        portsMdPath,
+        [
+          "# Port Assignments",
+          "",
+          "This file defines the port template variables for this project.",
+          "Each PORTn variable will be replaced with a real port number in PORTS.LOCAL.md.",
+          "Update this file to add more ports as your project needs them.",
+          "",
+          "- PORT1: Main dev server",
+          "",
+        ].join("\n"),
+      );
+    }
+
+    // 7. Commit scaffolded files (only for freshly created repos)
     if (freshRepo) {
       try {
         execFileSync("git", ["add", "-A"], {
@@ -185,14 +220,13 @@ export function createProject(
     id: crypto.randomUUID(),
     name,
     path: projectPath,
-    port: getNextPort(projects),
     description,
     color: color || PROJECT_COLORS[projects.length % PROJECT_COLORS.length],
   };
   projects.push(project);
   projects.sort((a, b) => a.name.localeCompare(b.name));
   atomicWrite(PROJECTS_FILE, JSON.stringify(projects, null, 2));
-  writeClaudeMd(projectPath, project.port);
+  writeClaudeMd(projectPath);
   scaffoldProject(projectPath);
   return project;
 }
@@ -244,7 +278,6 @@ export function populateFromDirectory(rootDir: string): void {
     id: crypto.randomUUID(),
     name: d.name,
     path: path.join(expanded, d.name),
-    port: 3000 + i * PORT_INCREMENT,
     color: PROJECT_COLORS[i % PROJECT_COLORS.length],
   }));
 
