@@ -72,6 +72,7 @@ export default function ChatPage() {
   useEffect(() => {
     const active = currentConversation?.devServerStatus;
     setShowServerPanel(active === "running" || active === "starting");
+    setShowSetupDialog(false);
   }, [currentConversation?.id]);
 
   // Open modal with pre-selected project when navigated from ProjectsPage
