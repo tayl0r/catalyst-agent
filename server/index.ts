@@ -1008,12 +1008,14 @@ app.all("/api/*", (_req, res) => {
 });
 
 // --- SPA fallback (production only) ---
-const clientDist = path.resolve(__dirname, "../client/dist");
-if (fs.existsSync(clientDist)) {
-  app.use(express.static(clientDist));
-  app.get("*", (_req, res) => {
-    res.sendFile(path.join(clientDist, "index.html"));
-  });
+if (process.env.NODE_ENV === "production") {
+  const clientDist = path.resolve(__dirname, "../client/dist");
+  if (fs.existsSync(clientDist)) {
+    app.use(express.static(clientDist));
+    app.get("*", (_req, res) => {
+      res.sendFile(path.join(clientDist, "index.html"));
+    });
+  }
 }
 
 // Kill all spawned processes on server shutdown (e.g. tsx watch restart).
