@@ -67,7 +67,7 @@ buildIndex();
 for (const conv of conversationIndex.values()) {
   if (conv.devServerStatus === "running" || conv.devServerStatus === "starting") {
     conv.devServerStatus = undefined;
-    atomicWrite(conversationPath(conv.id), JSON.stringify(conv, null, 2));
+    saveConversation(conv);
   }
 }
 
@@ -106,46 +106,49 @@ export function createConversation(
     id,
     name,
     slug,
-    title: name,
     projectId,
     created_at: now,
     updated_at: now,
   };
-  atomicWrite(conversationPath(id), JSON.stringify(conversation, null, 2));
+  saveConversation(conversation);
   conversationIndex.set(id, conversation);
   return conversation;
 }
 
-export function touchConversation(id: string): void {
+function saveConversation(conv: Conversation): void {
+  atomicWrite(conversationPath(conv.id), JSON.stringify(conv, null, 2));
+}
+
+function patchConversation(id: string, apply: (conv: Conversation) => void): void {
   if (!isValidConversationId(id)) return;
   const conv = conversationIndex.get(id);
   if (!conv) return;
-  conv.updated_at = new Date().toISOString();
-  atomicWrite(conversationPath(id), JSON.stringify(conv, null, 2));
+  apply(conv);
+  saveConversation(conv);
+}
+
+export function touchConversation(id: string): void {
+  patchConversation(id, (conv) => {
+    conv.updated_at = new Date().toISOString();
+  });
 }
 
 export function setWorktreeCwd(id: string, cwd: string): void {
-  if (!isValidConversationId(id)) return;
-  const conv = conversationIndex.get(id);
-  if (!conv) return;
-  conv.worktreeCwd = cwd;
-  atomicWrite(conversationPath(id), JSON.stringify(conv, null, 2));
+  patchConversation(id, (conv) => {
+    conv.worktreeCwd = cwd;
+  });
 }
 
 export function setConversationPorts(id: string, ports: Record<string, number>): void {
-  if (!isValidConversationId(id)) return;
-  const conv = conversationIndex.get(id);
-  if (!conv) return;
-  conv.ports = ports;
-  atomicWrite(conversationPath(id), JSON.stringify(conv, null, 2));
+  patchConversation(id, (conv) => {
+    conv.ports = ports;
+  });
 }
 
 export function setDevServerStatus(id: string, status: DevServerStatus): void {
-  if (!isValidConversationId(id)) return;
-  const conv = conversationIndex.get(id);
-  if (!conv) return;
-  conv.devServerStatus = status === "stopped" ? undefined : status;
-  atomicWrite(conversationPath(id), JSON.stringify(conv, null, 2));
+  patchConversation(id, (conv) => {
+    conv.devServerStatus = status === "stopped" ? undefined : status;
+  });
 }
 
 export function getAllUsedPorts(): Set<number> {

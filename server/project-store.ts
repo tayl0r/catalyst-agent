@@ -25,8 +25,18 @@ export function expandTilde(p: string): string {
 
 ensureDir();
 
+// In-memory project cache (mirrors the conversationIndex pattern in store.ts)
+let projectCache: Project[] | null = null;
+
 export function loadProjects(): Project[] {
-  return readJson<Project[]>(PROJECTS_FILE, []);
+  if (projectCache !== null) return projectCache;
+  projectCache = readJson<Project[]>(PROJECTS_FILE, []);
+  return projectCache;
+}
+
+function writeProjects(projects: Project[]): void {
+  atomicWrite(PROJECTS_FILE, JSON.stringify(projects, null, 2));
+  projectCache = projects;
 }
 
 export function getProject(id: string): Project | undefined {
@@ -225,7 +235,7 @@ export function createProject(
   };
   projects.push(project);
   projects.sort((a, b) => a.name.localeCompare(b.name));
-  atomicWrite(PROJECTS_FILE, JSON.stringify(projects, null, 2));
+  writeProjects(projects);
   writeClaudeMd(projectPath);
   scaffoldProject(projectPath);
   return project;
@@ -243,7 +253,7 @@ export function updateProject(
   if (updates.path !== undefined) project.path = updates.path;
   if (updates.description !== undefined) project.description = updates.description;
   if (updates.color !== undefined) project.color = updates.color;
-  atomicWrite(PROJECTS_FILE, JSON.stringify(projects, null, 2));
+  writeProjects(projects);
   return project;
 }
 
@@ -252,7 +262,7 @@ export function deleteProject(id: string): boolean {
   const projects = loadProjects();
   const filtered = projects.filter((p) => p.id !== id);
   if (filtered.length === projects.length) return false;
-  atomicWrite(PROJECTS_FILE, JSON.stringify(filtered, null, 2));
+  writeProjects(filtered);
   return true;
 }
 
@@ -282,7 +292,7 @@ export function populateFromDirectory(rootDir: string): void {
   }));
 
   if (projects.length > 0) {
-    atomicWrite(PROJECTS_FILE, JSON.stringify(projects, null, 2));
+    writeProjects(projects);
     console.log(`Pre-populated ${projects.length} projects from ${rootDir}`);
   }
 }

@@ -1,7 +1,6 @@
 import type { UIMessage } from "@shared/types";
-import ReactMarkdown from "react-markdown";
-import remarkGfm from "remark-gfm";
 import EventRenderer from "./events/EventRenderer";
+import TextBlock from "./events/TextBlock";
 import StreamingIndicator from "./StreamingIndicator";
 
 interface ChatMessageProps {
@@ -27,9 +26,7 @@ export default function ChatMessage({ message, onSend }: ChatMessageProps) {
           {message.rawEvents?.length ? (
             <EventRenderer events={message.rawEvents} onSend={onSend} />
           ) : message.content ? (
-            <div className="prose prose-invert prose-sm max-w-none">
-              <ReactMarkdown remarkPlugins={[remarkGfm]}>{message.content}</ReactMarkdown>
-            </div>
+            <TextBlock text={message.content} />
           ) : null}
           {message.streaming && <StreamingIndicator />}
         </div>
