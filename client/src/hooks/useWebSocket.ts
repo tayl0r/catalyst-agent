@@ -197,6 +197,11 @@ export default function useWebSocket(): UseWebSocketReturn {
           // event loop tick (e.g. server_status) can filter correctly
           currentConversationRef.current = msg.conversation;
           setCurrentConversation(msg.conversation);
+          // Restore persisted dev server status so the UI reflects the
+          // correct state before the live server_status message arrives
+          if (msg.conversation?.devServerStatus) {
+            setServerStatus(msg.conversation.devServerStatus);
+          }
           break;
 
         case "conversation_list":

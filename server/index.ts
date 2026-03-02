@@ -104,7 +104,8 @@ function broadcastServerStatus(
 }
 
 function getServerStatus(conversationId: string): DevServerStatus {
-  return serverProcesses.has(conversationId) ? "running" : "stopped";
+  const conv = getConversation(conversationId);
+  return conv?.devServerStatus ?? "stopped";
 }
 
 function killServerProcess(conversationId: string): void {

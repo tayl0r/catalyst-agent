@@ -62,6 +62,12 @@ export default function ChatPage() {
     isNearBottomRef.current = true;
   }, [currentConversation?.id]);
 
+  // Auto-open server panel when switching to a conversation with an active server
+  useEffect(() => {
+    const active = currentConversation?.devServerStatus;
+    setShowServerPanel(active === "running" || active === "starting");
+  }, [currentConversation?.id]);
+
   // Open modal with pre-selected project when navigated from ProjectsPage
   useEffect(() => {
     const state = location.state as { newConversationProjectId?: string } | null;
