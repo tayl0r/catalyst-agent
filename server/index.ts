@@ -57,6 +57,17 @@ const serverProcesses = new Map<
   { process: ChildProcess; killTimeout: ReturnType<typeof setTimeout> | null }
 >();
 
+// --- CLI process map (survives WebSocket reconnects) ---
+const cliProcesses = new Map<
+  string,
+  {
+    process: ChildProcess;
+    killTimeout: ReturnType<typeof setTimeout> | null;
+    streamingText: string;
+    rawEvents: Record<string, unknown>[];
+  }
+>();
+
 // Track which WS clients are viewing which conversation
 const conversationClients = new Map<string, Set<WebSocket>>();
 
@@ -146,6 +157,26 @@ function killServerProcess(conversationId: string): void {
     serverProcesses.delete(conversationId);
     broadcastServerStatus(conversationId, "stopped");
   }
+}
+
+function killCLIProcess(conversationId: string): void {
+  const entry = cliProcesses.get(conversationId);
+  if (!entry) return;
+  const proc = entry.process;
+  if (entry.killTimeout) clearTimeout(entry.killTimeout);
+  cliProcesses.delete(conversationId);
+  try {
+    proc.kill("SIGTERM");
+  } catch {
+    return;
+  }
+  setTimeout(() => {
+    try {
+      proc.kill("SIGKILL");
+    } catch {
+      // process already exited
+    }
+  }, 3000);
 }
 
 // --- Startup migration ---
@@ -291,45 +322,13 @@ wss.on("connection", (ws: WebSocket) => {
 
   console.log(`WS: [connected] clients=${wss.clients.size}`);
 
-  let activeProcess: ChildProcess | null = null;
-  let killTimeout: ReturnType<typeof setTimeout> | null = null;
   let currentConversationId: string | null = null;
-  let isFirstPrompt = true;
   let pendingProjectId: string | null = null;
   let pendingGitPull: Promise<void> | null = null;
 
   function send(obj: ServerMessage): void {
     if (ws.readyState === WebSocket.OPEN) {
       ws.send(JSON.stringify(obj));
-    }
-  }
-
-  function killProcess(): void {
-    if (!activeProcess) return;
-    const proc = activeProcess;
-    activeProcess = null;
-    try {
-      proc.kill("SIGTERM");
-    } catch {
-      return;
-    }
-    killTimeout = setTimeout(() => {
-      try {
-        proc.kill("SIGKILL");
-      } catch {
-        // process already exited
-      }
-    }, 3000);
-  }
-
-  function cleanup(child: ChildProcess): void {
-    // Only clear activeProcess if this child is still the active one
-    if (activeProcess === child) {
-      activeProcess = null;
-    }
-    if (killTimeout) {
-      clearTimeout(killTimeout);
-      killTimeout = null;
     }
   }
 
@@ -348,7 +347,9 @@ wss.on("connection", (ws: WebSocket) => {
     }
 
     if (parsed.type === "kill") {
-      killProcess();
+      if (currentConversationId) {
+        killCLIProcess(currentConversationId);
+      }
       return;
     }
 
@@ -362,16 +363,15 @@ wss.on("connection", (ws: WebSocket) => {
         send({ type: "error", data: "Invalid conversation ID" });
         return;
       }
+      killCLIProcess(parsed.conversationId);
       killServerProcess(parsed.conversationId);
       deleteConv(parsed.conversationId);
       // If we deleted the current conversation, reset state
       if (currentConversationId === parsed.conversationId) {
-        killProcess();
         pendingGitPull = null;
         untrackClient(ws, currentConversationId);
         currentConversationId = null;
         pendingProjectId = null;
-        isFirstPrompt = true;
       }
       // Clean up any other clients still tracked for this conversation
       conversationClients.delete(parsed.conversationId);
@@ -395,15 +395,9 @@ wss.on("connection", (ws: WebSocket) => {
         send({ type: "error", data: "Conversation already archived" });
         return;
       }
-      // Stop dev server (no-ops if none)
+      // Stop CLI and dev server
+      killCLIProcess(parsed.conversationId);
       killServerProcess(parsed.conversationId);
-      // Stop Claude CLI if this connection owns it. Note: CLI processes
-      // from other WS connections are not tracked globally (unlike dev servers),
-      // so multi-tab cleanup may leave an orphaned CLI process that will
-      // exit on its own when the worktree disappears.
-      if (currentConversationId === parsed.conversationId) {
-        killProcess();
-      }
       // Remove worktree and branch asynchronously.
       // Branch name is assumed to match conv.slug (set via `claude -w <slug>`).
       // If the CLI used a different name, the branch delete will fail and log a warning.
@@ -562,12 +556,10 @@ wss.on("connection", (ws: WebSocket) => {
         while (existingSlugs.has(`${slug}-${i}`)) i++;
         slug = `${slug}-${i}`;
       }
-      killProcess();
       const conv = createConversation(id, trimmedName, slug, parsed.projectId);
       trackClient(ws, id, currentConversationId);
       currentConversationId = id;
       pendingProjectId = parsed.projectId;
-      isFirstPrompt = true;
       send({ type: "conversation", conversation: conv });
       send({ type: "messages", messages: [] });
       broadcastConversationList();
@@ -601,7 +593,6 @@ wss.on("connection", (ws: WebSocket) => {
     }
 
     if (parsed.type === "start") {
-      killProcess();
       pendingGitPull = null;
       if (!isValidConversationId(parsed.conversationId)) {
         send({ type: "error", data: "Invalid conversation ID" });
@@ -616,9 +607,6 @@ wss.on("connection", (ws: WebSocket) => {
       currentConversationId = parsed.conversationId;
       pendingProjectId = conv.projectId;
       const messages = loadMessages(parsed.conversationId);
-      // If no messages exist, this conversation was created but never prompted —
-      // use --session-id (first prompt) instead of --resume
-      isFirstPrompt = messages.length === 0;
       send({ type: "messages", messages });
       send({ type: "conversation", conversation: conv });
       // Send current dev server status for this conversation
@@ -631,6 +619,15 @@ wss.on("connection", (ws: WebSocket) => {
           ports: conv.ports,
         });
       }
+      // Resume streaming if CLI is active for this conversation
+      const cliEntry = cliProcesses.get(parsed.conversationId);
+      if (cliEntry) {
+        send({
+          type: "streaming_resume",
+          streamingText: cliEntry.streamingText,
+          rawEvents: cliEntry.rawEvents,
+        });
+      }
       return;
     }
 
@@ -640,14 +637,15 @@ wss.on("connection", (ws: WebSocket) => {
       return;
     }
 
-    if (activeProcess) {
-      send({ type: "error", data: "A process is already running" });
-      return;
-    }
-
     // Require an active conversation (created via create_conversation)
     if (currentConversationId === null) {
       send({ type: "error", data: "No conversation selected" });
+      return;
+    }
+
+    // Double-spawn guard
+    if (cliProcesses.has(currentConversationId)) {
+      send({ type: "error", data: "A process is already running" });
       return;
     }
 
@@ -661,7 +659,25 @@ wss.on("connection", (ws: WebSocket) => {
       return;
     }
 
-    touchConversation(currentConversationId);
+    const convId = currentConversationId;
+
+    // Wait for pending git pull before spawning
+    if (pendingGitPull) {
+      const pull = pendingGitPull;
+      pendingGitPull = null;
+      await pull;
+      // Re-check after await in case another handler snuck in
+      if (cliProcesses.has(convId)) {
+        send({ type: "error", data: "A process is already running" });
+        return;
+      }
+    }
+
+    // --- All guards passed. Commit side effects. ---
+    touchConversation(convId);
+
+    // Derive isFirstPrompt from stored messages (before appending user message)
+    const isFirstPrompt = loadMessages(convId).length === 0;
 
     // Store user message
     const userMsg: UIMessage = {
@@ -669,7 +685,7 @@ wss.on("connection", (ws: WebSocket) => {
       type: "user",
       content: parsed.text,
     };
-    appendMessage(currentConversationId, userMsg);
+    appendMessage(convId, userMsg);
 
     // Resolve cwd: use worktree path when resuming, otherwise project root
     const project = pendingProjectId ? getProject(pendingProjectId) : null;
@@ -687,236 +703,217 @@ wss.on("connection", (ws: WebSocket) => {
     // Subsequent prompts: --resume loads an existing session by UUID.
     // Using --session-id on an existing session fails with "already in use".
     const sessionFlag = isFirstPrompt ? "--session-id" : "--resume";
-    const args = [
-      sessionFlag,
-      currentConversationId,
-      "-p",
-      "--output-format",
-      "stream-json",
-      "--verbose",
-    ];
+    const args = [sessionFlag, convId, "-p", "--output-format", "stream-json", "--verbose"];
     // -w creates a git worktree on the first prompt. On --resume, we set
     // cwd to the worktree path stored from the init event.
     if (isFirstPrompt) {
       args.push("-w", conv.slug);
     }
     args.push("--", parsed.text);
+
+    const logProjectName = project?.name ?? "unknown";
+    const logConvName = conv.name;
     if (isFirstPrompt) {
       console.log(
-        `SESSION: [new] project="${project?.name ?? "unknown"}" convo="${conv.name}" session=${currentConversationId}`,
+        `SESSION: [new] project="${logProjectName}" convo="${logConvName}" session=${convId}`,
       );
     }
     console.log(
-      `USER: ${isFirstPrompt ? "[new session]" : "[resume]"} project="${project?.name ?? "unknown"}" convo="${conv.name}" session=${currentConversationId} text=${JSON.stringify(parsed.text.length > 200 ? `${parsed.text.slice(0, 200)}...` : parsed.text)}`,
+      `USER: ${isFirstPrompt ? "[new session]" : "[resume]"} project="${logProjectName}" convo="${logConvName}" session=${convId} text=${JSON.stringify(parsed.text.length > 200 ? `${parsed.text.slice(0, 200)}...` : parsed.text)}`,
     );
 
-    isFirstPrompt = false;
+    // --- doSpawn: spawn CLI and wire up handlers ---
+    const child = spawn("claude", args, {
+      stdio: ["pipe", "pipe", "pipe"],
+      env,
+      cwd: spawnCwd || undefined,
+    });
 
-    const convId = currentConversationId;
-    const logProjectName = project?.name ?? "unknown";
-    const logConvName = conv.name;
+    // Create entry and register in map immediately (synchronous with spawn)
+    const entry = {
+      process: child,
+      killTimeout: null as ReturnType<typeof setTimeout> | null,
+      streamingText: "",
+      rawEvents: [] as Record<string, unknown>[],
+    };
+    cliProcesses.set(convId, entry);
 
-    const doSpawn = () => {
-      const child = spawn("claude", args, {
-        stdio: ["pipe", "pipe", "pipe"],
-        env,
-        cwd: spawnCwd || undefined,
-      });
+    const shellCmd = `claude ${args.map((a) => (/[^a-zA-Z0-9_./:=-]/.test(a) ? `'${a.replace(/'/g, "'\\''")}'` : a)).join(" ")}`;
+    console.log(
+      `PROCESS: [start] pid=${child.pid} cwd=${spawnCwd || "none"} project="${logProjectName}" convo="${logConvName}" session=${convId}\n  $ ${shellCmd}`,
+    );
 
-      activeProcess = child;
-      const shellCmd = `claude ${args.map((a) => (/[^a-zA-Z0-9_./:=-]/.test(a) ? `'${a.replace(/'/g, "'\\''")}'` : a)).join(" ")}`;
-      console.log(
-        `PROCESS: [start] pid=${child.pid} cwd=${spawnCwd || "none"} project="${logProjectName}" convo="${logConvName}" session=${convId}\n  $ ${shellCmd}`,
-      );
+    const onInitCwd = (cwd: string) => {
+      console.log(`PROCESS: [init] pid=${child.pid} cwd=${cwd} session=${convId}`);
+      setWorktreeCwd(convId, cwd);
+      // Allocate ports from template files in the worktree (skip if already allocated)
+      const existing = getConversation(convId);
+      if (existing?.ports && Object.keys(existing.ports).length > 0) return;
+      allocatePorts(convId, cwd)
+        .then((ports) => {
+          if (Object.keys(ports).length > 0) {
+            console.log(`PORTS: [allocated] session=${convId} ports=${JSON.stringify(ports)}`);
+            broadcastServerStatus(convId, "stopped", ports);
+          }
+        })
+        .catch((err) => {
+          console.error(`PORTS: [error] session=${convId} error=${(err as Error).message}`);
+        });
+    };
 
-      // Per-prompt streaming context — not shared across prompts.
-      // Each spawn gets its own accumulator so conversation switches
-      // can't corrupt another prompt's stored text.
-      const ctx: { streamingText: string; rawEvents: Record<string, unknown>[] } = {
-        streamingText: "",
-        rawEvents: [],
-      };
-      const onInitCwd = (cwd: string) => {
-        if (convId) {
-          console.log(`PROCESS: [init] pid=${child.pid} cwd=${cwd} session=${convId}`);
-          setWorktreeCwd(convId, cwd);
-          // Allocate ports from template files in the worktree (skip if already allocated)
-          const existing = getConversation(convId);
-          if (existing?.ports && Object.keys(existing.ports).length > 0) return;
-          allocatePorts(convId, cwd)
-            .then((ports) => {
-              if (Object.keys(ports).length > 0) {
-                console.log(`PORTS: [allocated] session=${convId} ports=${JSON.stringify(ports)}`);
-                broadcastServerStatus(convId, "stopped", ports);
-              }
-            })
-            .catch((err) => {
-              console.error(`PORTS: [error] session=${convId} error=${(err as Error).message}`);
-            });
+    const { stdin, stdout, stderr } = child;
+    if (!stdin || !stdout || !stderr) {
+      send({ type: "error", data: "Failed to attach to process stdio" });
+      cliProcesses.delete(convId);
+      return;
+    }
+
+    stdin.on("error", () => {
+      /* ignore EPIPE — child may not read stdin */
+    });
+    stdin.end();
+
+    let buffer = "";
+
+    let stdoutBytes = 0;
+    let stderrBytes = 0;
+    let eventCount = 0;
+
+    // Detect hung processes — if no stdout/stderr within 30s, warn
+    const SPAWN_TIMEOUT_MS = 30_000;
+    const spawnTimer = setTimeout(() => {
+      if (stdoutBytes === 0 && stderrBytes === 0 && cliProcesses.get(convId)?.process === child) {
+        console.error(
+          `PROCESS: [timeout] pid=${child.pid} session=${convId} no output after ${SPAWN_TIMEOUT_MS / 1000}s — killing`,
+        );
+        sendToConversation(convId, {
+          type: "error",
+          data: "Claude CLI produced no output — process may be hung. Killed.",
+        });
+        killCLIProcess(convId);
+      }
+    }, SPAWN_TIMEOUT_MS);
+
+    stdout.on("data", (chunk: Buffer) => {
+      clearTimeout(spawnTimer);
+      stdoutBytes += chunk.length;
+      buffer += chunk.toString();
+      const lines = buffer.split("\n");
+      buffer = lines.pop() ?? "";
+
+      for (const line of lines) {
+        const trimmed = line.trim();
+        if (!trimmed) continue;
+
+        let event: unknown;
+        try {
+          event = JSON.parse(trimmed);
+        } catch (e) {
+          console.warn(
+            `STREAM: [parse-error] pid=${child.pid} session=${convId} error=${(e as Error).message} line=${JSON.stringify(trimmed.slice(0, 200))}`,
+          );
+          continue;
         }
-      };
+        if (typeof event !== "object" || event === null) continue;
 
-      const { stdin, stdout, stderr } = child;
-      if (!stdin || !stdout || !stderr) {
-        send({ type: "error", data: "Failed to attach to process stdio" });
-        cleanup(child);
-        return;
+        eventCount++;
+        const ev = event as Record<string, unknown>;
+        const eventType = ev.type as string;
+        const eventSubtype = ev.subtype as string | undefined;
+        if (eventCount <= 5 || eventType === "system" || eventType === "result") {
+          console.log(
+            `STREAM: [event] pid=${child.pid} session=${convId} #${eventCount} type=${eventType}${eventSubtype ? `.${eventSubtype}` : ""}`,
+          );
+        }
+
+        // Broadcast to all clients watching this conversation
+        const broadcastEvent = (msg: ServerMessage) => sendToConversation(convId, msg);
+        handleNdjsonEvent(ev, broadcastEvent, entry, onInitCwd);
+      }
+    });
+
+    stderr.on("data", (chunk: Buffer) => {
+      clearTimeout(spawnTimer);
+      stderrBytes += chunk.length;
+      const text = chunk.toString().trim();
+      if (text) {
+        console.warn(
+          `STDERR: pid=${child.pid} session=${convId} text=${JSON.stringify(text.slice(0, 500))}`,
+        );
+      }
+      if (cliProcesses.get(convId)?.process === child) {
+        sendToConversation(convId, { type: "stderr", data: chunk.toString() });
+      }
+    });
+
+    child.on("error", (err: Error) => {
+      console.error(
+        `PROCESS: [error] pid=${child.pid} session=${convId} error=${JSON.stringify(err.message)} project="${logProjectName}" convo="${logConvName}"`,
+      );
+      if (cliProcesses.get(convId)?.process === child) {
+        sendToConversation(convId, { type: "error", data: err.message });
+        cliProcesses.delete(convId);
+      }
+    });
+
+    child.on("close", (code: number | null) => {
+      clearTimeout(spawnTimer);
+      console.log(
+        `PROCESS: [exit] pid=${child.pid} exitCode=${code} stdoutBytes=${stdoutBytes} stderrBytes=${stderrBytes} events=${eventCount} project="${logProjectName}" convo="${logConvName}" session=${convId}`,
+      );
+      const isActive = cliProcesses.get(convId)?.process === child;
+
+      // Flush remaining buffer and send done if still the active process
+      if (isActive) {
+        if (buffer.trim()) {
+          try {
+            const final = JSON.parse(buffer.trim());
+            if (typeof final === "object" && final !== null) {
+              const broadcastEvent = (msg: ServerMessage) => sendToConversation(convId, msg);
+              handleNdjsonEvent(final as Record<string, unknown>, broadcastEvent, entry, onInitCwd);
+            }
+          } catch {
+            // ignore incomplete final line
+          }
+        }
+        cliProcesses.delete(convId);
+        sendToConversation(convId, { type: "done", exitCode: code });
       }
 
-      stdin.on("error", () => {
-        /* ignore EPIPE — child may not read stdin */
-      });
-      stdin.end();
-
-      let buffer = "";
-
-      let stdoutBytes = 0;
-      let stderrBytes = 0;
-      let eventCount = 0;
-
-      // Detect hung processes — if no stdout/stderr within 30s, warn
-      const SPAWN_TIMEOUT_MS = 30_000;
-      const spawnTimer = setTimeout(() => {
-        if (stdoutBytes === 0 && stderrBytes === 0 && activeProcess === child) {
-          console.error(
-            `PROCESS: [timeout] pid=${child.pid} session=${convId} no output after ${SPAWN_TIMEOUT_MS / 1000}s — killing`,
-          );
-          send({
-            type: "error",
-            data: "Claude CLI produced no output — process may be hung. Killed.",
-          });
-          killProcess();
-        }
-      }, SPAWN_TIMEOUT_MS);
-
-      stdout.on("data", (chunk: Buffer) => {
-        clearTimeout(spawnTimer);
-        stdoutBytes += chunk.length;
-        buffer += chunk.toString();
-        const lines = buffer.split("\n");
-        buffer = lines.pop() ?? "";
-
-        for (const line of lines) {
-          const trimmed = line.trim();
-          if (!trimmed) continue;
-
-          let event: unknown;
-          try {
-            event = JSON.parse(trimmed);
-          } catch (e) {
-            console.warn(
-              `STREAM: [parse-error] pid=${child.pid} session=${convId} error=${(e as Error).message} line=${JSON.stringify(trimmed.slice(0, 200))}`,
-            );
-            continue;
-          }
-          if (typeof event !== "object" || event === null) continue;
-
-          eventCount++;
-          const ev = event as Record<string, unknown>;
-          const eventType = ev.type as string;
-          const eventSubtype = ev.subtype as string | undefined;
-          if (eventCount <= 5 || eventType === "system" || eventType === "result") {
-            console.log(
-              `STREAM: [event] pid=${child.pid} session=${convId} #${eventCount} type=${eventType}${eventSubtype ? `.${eventSubtype}` : ""}`,
-            );
-          }
-
-          // Only send to client if this is still the active process
-          const sendFn = activeProcess === child ? send : () => {};
-          handleNdjsonEvent(ev, sendFn, ctx, onInitCwd);
-        }
-      });
-
-      stderr.on("data", (chunk: Buffer) => {
-        clearTimeout(spawnTimer);
-        stderrBytes += chunk.length;
-        const text = chunk.toString().trim();
-        if (text) {
-          console.warn(
-            `STDERR: pid=${child.pid} session=${convId} text=${JSON.stringify(text.slice(0, 500))}`,
-          );
-        }
-        if (activeProcess === child) {
-          send({ type: "stderr", data: chunk.toString() });
-        }
-      });
-
-      child.on("error", (err: Error) => {
-        console.error(
-          `PROCESS: [error] pid=${child.pid} session=${convId} error=${JSON.stringify(err.message)} project="${logProjectName}" convo="${logConvName}"`,
-        );
-        if (activeProcess === child) {
-          send({ type: "error", data: err.message });
-        }
-        cleanup(child);
-      });
-
-      child.on("close", (code: number | null) => {
-        clearTimeout(spawnTimer);
+      // Persist accumulated text only for the active process. Killed processes
+      // (isActive=false) are skipped to prevent stale partial output from a
+      // killed CLI appearing as a duplicate message when a new prompt follows.
+      if (!entry.streamingText && isActive) {
         console.log(
-          `PROCESS: [exit] pid=${child.pid} exitCode=${code} stdoutBytes=${stdoutBytes} stderrBytes=${stderrBytes} events=${eventCount} project="${logProjectName}" convo="${logConvName}" session=${convId}`,
+          `AGENT: [no response] project="${logProjectName}" convo="${logConvName}" session=${convId} exitCode=${code}`,
         );
-        const isActive = activeProcess === child;
-
-        // Only flush buffer and send done if still the active process
-        if (isActive) {
-          if (buffer.trim()) {
-            try {
-              const final = JSON.parse(buffer.trim());
-              if (typeof final === "object" && final !== null) {
-                handleNdjsonEvent(final as Record<string, unknown>, send, ctx, onInitCwd);
-              }
-            } catch {
-              // ignore incomplete final line
-            }
-          }
-          send({ type: "done", exitCode: code });
-        }
-
-        cleanup(child);
-
-        // Always store accumulated text (even from killed processes)
-        if (!ctx.streamingText && isActive) {
-          // Only log no-response for processes that weren't intentionally killed
-          console.log(
-            `AGENT: [no response] project="${logProjectName}" convo="${logConvName}" session=${convId} exitCode=${code}`,
-          );
-        }
-        if (ctx.streamingText && convId) {
-          const responsePreview =
-            ctx.streamingText.length > 200
-              ? `${ctx.streamingText.slice(0, 200)}...`
-              : ctx.streamingText;
-          console.log(
-            `AGENT: project="${logProjectName}" convo="${logConvName}" session=${convId} text=${JSON.stringify(responsePreview)}`,
-          );
-          const assistantMsg: UIMessage = {
-            id: crypto.randomUUID(),
-            type: "assistant",
-            content: ctx.streamingText,
-            streaming: false,
-            ...(ctx.rawEvents.length > 0 && { rawEvents: ctx.rawEvents }),
-          };
-          appendMessage(convId, assistantMsg);
-          touchConversation(convId);
-          broadcastConversationList();
-        }
-      });
-    }; // end doSpawn
-
-    if (pendingGitPull) {
-      const pull = pendingGitPull;
-      pendingGitPull = null;
-      pull.then(doSpawn);
-    } else {
-      doSpawn();
-    }
+      }
+      if (entry.streamingText && isActive) {
+        const responsePreview =
+          entry.streamingText.length > 200
+            ? `${entry.streamingText.slice(0, 200)}...`
+            : entry.streamingText;
+        console.log(
+          `AGENT: project="${logProjectName}" convo="${logConvName}" session=${convId} text=${JSON.stringify(responsePreview)}`,
+        );
+        const assistantMsg: UIMessage = {
+          id: crypto.randomUUID(),
+          type: "assistant",
+          content: entry.streamingText,
+          streaming: false,
+          ...(entry.rawEvents.length > 0 && { rawEvents: entry.rawEvents }),
+        };
+        appendMessage(convId, assistantMsg);
+        touchConversation(convId);
+        broadcastConversationList();
+      }
+    });
   });
 
   ws.on("close", () => {
     console.log(`WS: [disconnected] clients=${wss.clients.size}`);
     untrackClient(ws, currentConversationId);
-    killProcess();
+    // CLI process survives disconnects — it's module-scoped
   });
 });
 
@@ -995,9 +992,20 @@ if (fs.existsSync(clientDist)) {
 }
 
 // Kill all spawned processes on server shutdown (e.g. tsx watch restart).
-// Timers won't fire during shutdown so we SIGKILL process groups directly
-// instead of using killServerProcess()'s async SIGTERM+timeout flow.
+// Timers won't fire during shutdown so we SIGKILL directly
+// instead of using the async SIGTERM+timeout flow.
 function shutdownAll() {
+  // Kill CLI processes (direct kill, not process group)
+  for (const [, entry] of cliProcesses) {
+    if (entry.killTimeout) clearTimeout(entry.killTimeout);
+    try {
+      entry.process.kill("SIGKILL");
+    } catch {
+      // already gone
+    }
+  }
+  cliProcesses.clear();
+  // Kill dev server processes (process group kill since they're detached)
   for (const [, entry] of serverProcesses) {
     if (entry.killTimeout) clearTimeout(entry.killTimeout);
     const pid = entry.process.pid;

@@ -281,6 +281,29 @@ export default function useWebSocket(): UseWebSocketReturn {
           }
           break;
 
+        case "streaming_resume": {
+          // Reconnecting to an in-progress CLI process.
+          // discardStreamRef was already cleared by the preceding "messages" handler.
+          streamingTextRef.current = msg.streamingText;
+          setIsProcessing(true);
+
+          const filteredEvents = (msg.rawEvents ?? [])
+            .map(filterEvent)
+            .filter((e): e is Record<string, unknown> => e !== null);
+
+          setMessages((prev) => [
+            ...prev,
+            {
+              id: createId(),
+              type: "assistant" as const,
+              content: msg.streamingText,
+              streaming: true,
+              rawEvents: filteredEvents.length > 0 ? filteredEvents : undefined,
+            },
+          ]);
+          break;
+        }
+
         default:
           break;
       }
@@ -367,7 +390,7 @@ export default function useWebSocket(): UseWebSocketReturn {
 
   const createConversation = useCallback(
     (name: string, projectId: string) => {
-      resetConversationState({ kill: true });
+      resetConversationState();
       setCurrentConversation(null);
       wsSend({ type: "create_conversation", name, projectId });
     },
@@ -376,7 +399,7 @@ export default function useWebSocket(): UseWebSocketReturn {
 
   const startConversation = useCallback(
     (conversationId: string) => {
-      resetConversationState({ kill: true });
+      resetConversationState();
       wsSend({ type: "start", conversationId });
     },
     [wsSend, resetConversationState],

@@ -189,6 +189,12 @@ export interface SyncStatusMessage {
   error?: string;
 }
 
+export interface StreamingResumeMessage {
+  type: "streaming_resume";
+  streamingText: string;
+  rawEvents: Record<string, unknown>[];
+}
+
 export type ServerMessage =
   | TextMessage
   | AssistantMessage
@@ -203,7 +209,8 @@ export type ServerMessage =
   | MessagesMessage
   | ServerOutputMessage
   | ServerStatusMessage
-  | SyncStatusMessage;
+  | SyncStatusMessage
+  | StreamingResumeMessage;
 
 // --- Client-side UI message types (different from wire types) ---
 
@@ -286,6 +293,7 @@ const SERVER_MESSAGE_TYPES: ReadonlySet<string> = new Set([
   "server_output",
   "server_status",
   "sync_status",
+  "streaming_resume",
 ]);
 
 export function isServerMessage(msg: unknown): msg is ServerMessage {
