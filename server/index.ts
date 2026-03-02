@@ -635,7 +635,9 @@ wss.on("connection", (ws: WebSocket) => {
       if (convId) {
         console.log(`PROCESS: [init] pid=${child.pid} cwd=${cwd} session=${convId}`);
         setWorktreeCwd(convId, cwd);
-        // Allocate ports from template files in the worktree
+        // Allocate ports from template files in the worktree (skip if already allocated)
+        const existing = getConversation(convId);
+        if (existing?.ports && Object.keys(existing.ports).length > 0) return;
         allocatePorts(convId, cwd)
           .then((ports) => {
             if (Object.keys(ports).length > 0) {

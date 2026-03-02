@@ -14,7 +14,7 @@ if [ -f "$PIDFILE" ]; then
     echo "Killing previous dev server (PID $OLD_PID)..."
     kill -- -"$OLD_PID" 2>/dev/null
     # Wait for process to actually exit (up to 5s)
-    for i in $(seq 1 10); do
+    for _ in $(seq 1 10); do
       kill -0 "$OLD_PID" 2>/dev/null || break
       sleep 0.5
     done

@@ -9,7 +9,7 @@ if kill -0 "$PID" 2>/dev/null; then
   echo "Stopping dev server (PID $PID)..."
   kill -- -"$PID" 2>/dev/null
   # Wait for process to actually exit (up to 5s)
-  for i in $(seq 1 10); do
+  for _ in $(seq 1 10); do
     kill -0 "$PID" 2>/dev/null || break
     sleep 0.5
   done

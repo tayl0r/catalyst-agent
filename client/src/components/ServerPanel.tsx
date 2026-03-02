@@ -17,9 +17,24 @@ const STATUS_COLORS: Record<DevServerStatus, string> = {
 
 export default function ServerPanel({ logs, status, ports, onClose }: ServerPanelProps) {
   const logEndRef = useRef<HTMLDivElement>(null);
+  const containerRef = useRef<HTMLDivElement>(null);
+  const isNearBottomRef = useRef(true);
 
   useEffect(() => {
-    logEndRef.current?.scrollIntoView({ behavior: "smooth" });
+    const container = containerRef.current;
+    if (!container) return;
+    const handleScroll = () => {
+      const { scrollTop, scrollHeight, clientHeight } = container;
+      isNearBottomRef.current = scrollHeight - scrollTop - clientHeight < 40;
+    };
+    container.addEventListener("scroll", handleScroll);
+    return () => container.removeEventListener("scroll", handleScroll);
+  }, []);
+
+  useEffect(() => {
+    if (isNearBottomRef.current) {
+      logEndRef.current?.scrollIntoView({ behavior: "smooth" });
+    }
   }, [logs]);
 
   return (
@@ -66,7 +81,10 @@ export default function ServerPanel({ logs, status, ports, onClose }: ServerPane
       )}
 
       {/* Log area */}
-      <div className="flex-1 overflow-y-auto bg-gray-950 p-3 font-mono text-xs leading-relaxed">
+      <div
+        ref={containerRef}
+        className="flex-1 overflow-y-auto bg-gray-950 p-3 font-mono text-xs leading-relaxed"
+      >
         {logs.length === 0 ? (
           <span className="text-gray-600">No output yet</span>
         ) : (
