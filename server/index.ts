@@ -375,10 +375,13 @@ wss.on("connection", (ws: WebSocket) => {
       // If we deleted the current conversation, reset state
       if (currentConversationId === parsed.conversationId) {
         killProcess();
+        untrackClient(ws, currentConversationId);
         currentConversationId = null;
         pendingProjectId = null;
         isFirstPrompt = true;
       }
+      // Clean up any other clients still tracked for this conversation
+      conversationClients.delete(parsed.conversationId);
       // Broadcast deletion and updated list to all clients
       broadcast({ type: "conversation_deleted", conversationId: parsed.conversationId });
       broadcastConversationList();
@@ -543,6 +546,7 @@ wss.on("connection", (ws: WebSocket) => {
         send({ type: "error", data: "Conversation not found" });
         return;
       }
+      trackClient(ws, parsed.conversationId, currentConversationId);
       currentConversationId = parsed.conversationId;
       pendingProjectId = conv.projectId;
       const messages = loadMessages(parsed.conversationId);
@@ -835,6 +839,7 @@ wss.on("connection", (ws: WebSocket) => {
 
   ws.on("close", () => {
     console.log(`WS: [disconnected] clients=${wss.clients.size}`);
+    untrackClient(ws, currentConversationId);
     killProcess();
   });
 });
