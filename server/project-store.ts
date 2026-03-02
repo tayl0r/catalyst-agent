@@ -111,7 +111,7 @@ function scaffoldProject(projectPath: string): void {
     // 2. .gitignore (only if git repo exists, create or append)
     if (hasGit) {
       const gitignorePath = path.join(projectPath, ".gitignore");
-      const localEntries = "start.local.sh\nPORTS.LOCAL\n";
+      const localEntries = "start.local.sh\nPORTS.LOCAL\n.claude/worktrees/\n";
       if (!fs.existsSync(gitignorePath)) {
         atomicWrite(
           gitignorePath,
@@ -119,8 +119,15 @@ function scaffoldProject(projectPath: string): void {
         );
       } else {
         const existing = fs.readFileSync(gitignorePath, "utf8");
-        if (!existing.includes("start.local.sh")) {
-          atomicWrite(gitignorePath, `${existing.trimEnd()}\n${localEntries}`);
+        let content = existing;
+        if (!content.includes("start.local.sh")) {
+          content = `${content.trimEnd()}\nstart.local.sh\nPORTS.LOCAL\n`;
+        }
+        if (!content.includes(".claude/worktrees")) {
+          content = `${content.trimEnd()}\n.claude/worktrees/\n`;
+        }
+        if (content !== existing) {
+          atomicWrite(gitignorePath, content);
         }
       }
     }
