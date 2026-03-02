@@ -4,7 +4,6 @@ export interface Conversation {
   id: string;
   name: string;
   slug: string;
-  title: string; // TODO: remove once migration is complete — kept for compat, set equal to name
   projectId: string;
   worktreeCwd?: string; // cwd reported by Claude CLI init event (worktree path)
   ports?: Record<string, number>; // allocated port numbers (e.g. { __PORT_1__: 3247 })

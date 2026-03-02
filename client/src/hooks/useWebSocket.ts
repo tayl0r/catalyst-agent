@@ -321,37 +321,36 @@ export default function useWebSocket(): UseWebSocketReturn {
     );
   }, [wsSend]);
 
-  const createConversation = useCallback(
-    (name: string, projectId: string) => {
+  const resetConversationState = useCallback(
+    ({ kill = false }: { kill?: boolean } = {}) => {
       discardStreamRef.current = true;
-      wsSend({ type: "kill" });
+      if (kill) wsSend({ type: "kill" });
       setIsProcessing(false);
       streamingTextRef.current = "";
       setMessages([]);
-      setCurrentConversation(null);
       setServerStatus("stopped");
       logBufferRef.current = [];
       setServerLogs([]);
       setServerPorts(null);
-      wsSend({ type: "create_conversation", name, projectId });
     },
     [wsSend],
   );
 
+  const createConversation = useCallback(
+    (name: string, projectId: string) => {
+      resetConversationState({ kill: true });
+      setCurrentConversation(null);
+      wsSend({ type: "create_conversation", name, projectId });
+    },
+    [wsSend, resetConversationState],
+  );
+
   const startConversation = useCallback(
     (conversationId: string) => {
-      discardStreamRef.current = true;
-      wsSend({ type: "kill" });
-      setIsProcessing(false);
-      streamingTextRef.current = "";
-      setMessages([]);
-      setServerStatus("stopped");
-      logBufferRef.current = [];
-      setServerLogs([]);
-      setServerPorts(null);
+      resetConversationState({ kill: true });
       wsSend({ type: "start", conversationId });
     },
-    [wsSend],
+    [wsSend, resetConversationState],
   );
 
   const deleteConversation = useCallback(
@@ -360,18 +359,13 @@ export default function useWebSocket(): UseWebSocketReturn {
       // If deleting current conversation, reset and discard in-flight streams
       setCurrentConversation((prev) => {
         if (prev?.id === conversationId) {
-          discardStreamRef.current = true;
-          setMessages([]);
-          setServerStatus("stopped");
-          logBufferRef.current = [];
-          setServerLogs([]);
-          setServerPorts(null);
+          resetConversationState();
           return null;
         }
         return prev;
       });
     },
-    [wsSend],
+    [wsSend, resetConversationState],
   );
 
   const startServer = useCallback(() => {

@@ -33,29 +33,12 @@ import {
   setWorktreeCwd,
   touchConversation,
 } from "./store.js";
+import { stripNullValues } from "./utils.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 dotenv.config({
   path: [path.resolve(__dirname, "../.env.local"), path.resolve(__dirname, "../.env")],
 });
-
-function stripNullValues(obj: unknown): unknown {
-  if (obj === null) return undefined;
-  if (Array.isArray(obj)) {
-    return obj.map(stripNullValues).filter((v) => v !== undefined);
-  }
-  if (typeof obj === "object") {
-    const result: Record<string, unknown> = {};
-    for (const [key, value] of Object.entries(obj as Record<string, unknown>)) {
-      const stripped = stripNullValues(value);
-      if (stripped !== undefined) {
-        result[key] = stripped;
-      }
-    }
-    return result;
-  }
-  return obj;
-}
 
 const PORT = process.env.CATAGENT_SERVER_PORT || 2999;
 const MAX_CONNECTIONS = 10;
@@ -585,7 +568,8 @@ wss.on("connection", (ws: WebSocket) => {
     appendMessage(currentConversationId, userMsg);
 
     // Resolve cwd: use worktree path when resuming, otherwise project root
-    const projectPath = pendingProjectId ? getProjectPath(pendingProjectId) : undefined;
+    const project = pendingProjectId ? getProject(pendingProjectId) : null;
+    const projectPath = project ? expandTilde(project.path) : undefined;
     const spawnCwd = !isFirstPrompt && conv.worktreeCwd ? conv.worktreeCwd : projectPath;
     if (spawnCwd && !fs.existsSync(spawnCwd)) {
       send({ type: "error", data: `Directory does not exist: ${spawnCwd}` });
@@ -613,8 +597,6 @@ wss.on("connection", (ws: WebSocket) => {
       args.push("-w", conv.slug);
     }
     args.push("--", parsed.text);
-
-    const project = pendingProjectId ? getProject(pendingProjectId) : null;
     if (isFirstPrompt) {
       console.log(
         `SESSION: [new] project="${project?.name ?? "unknown"}" convo="${conv.name}" session=${currentConversationId}`,
@@ -828,9 +810,7 @@ function handleNdjsonEvent(
   ctx: { streamingText: string; rawEvents: Record<string, unknown>[] },
   onInitCwd?: (cwd: string) => void,
 ): void {
-  // Store every event (null-stripped) for persistence
-  ctx.rawEvents.push(stripNullValues(event) as Record<string, unknown>);
-
+  // Skip storing content_block_delta — the text is already in ctx.streamingText
   if (event.type === "content_block_delta") {
     const delta = event.delta;
     if (typeof delta !== "object" || delta === null) return;
@@ -841,6 +821,9 @@ function handleNdjsonEvent(
     }
     return;
   }
+
+  // Store non-delta events (null-stripped) for persistence
+  ctx.rawEvents.push(stripNullValues(event) as Record<string, unknown>);
 
   if (event.type === "assistant") {
     // Extract text from the assistant message's content array, but only if

@@ -20,3 +20,21 @@ export function readJson<T>(filePath: string, fallback: T): T {
     return fallback;
   }
 }
+
+export function stripNullValues(obj: unknown): unknown {
+  if (obj === null) return undefined;
+  if (Array.isArray(obj)) {
+    return obj.map(stripNullValues).filter((v) => v !== undefined);
+  }
+  if (typeof obj === "object") {
+    const result: Record<string, unknown> = {};
+    for (const [key, value] of Object.entries(obj as Record<string, unknown>)) {
+      const stripped = stripNullValues(value);
+      if (stripped !== undefined) {
+        result[key] = stripped;
+      }
+    }
+    return result;
+  }
+  return obj;
+}
