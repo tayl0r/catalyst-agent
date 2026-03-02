@@ -1,7 +1,7 @@
 import type { DevServerStatus } from "@shared/types";
 import { type ReactNode, useEffect, useRef } from "react";
 
-const URL_RE = /(https?:\/\/[^\s)"'>]+)/g;
+const URL_RE = /(https?:\/\/[^\s)"'>]+)/;
 
 function linkify(text: string): ReactNode {
   const parts = text.split(URL_RE);
