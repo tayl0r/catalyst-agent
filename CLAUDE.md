@@ -79,3 +79,10 @@ Always run `npm run lint:fix` before committing to ensure code passes linting an
 - **Vite is transpile-only:** Vite does not run `tsc` — type errors won't fail the dev server or build. Run `npm run typecheck` separately
 - **Port template variables:** `start.sh` and `PORTS.md` use `__PORT_1__`, `__PORT_2__`, etc. as template variables (regex `/__PORT_(\d+)__/`), replaced with real port numbers in the generated `.local` files
 - **No tests:** Project has no test infrastructure — all testing is manual
+
+
+# Dev Server Ports
+
+Your dev server ports are defined in PORTS.LOCAL.md (auto-generated per worktree).
+Start the server with start.local.sh. Do not edit PORTS.LOCAL.md or start.local.sh
+directly — edit PORTS.md and start.sh (using __PORT_N__ template variables) instead.
