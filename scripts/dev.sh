@@ -3,8 +3,6 @@
 # Kills any previous dev server, writes PID file, runs server+client,
 # and cleans up on exit.
 
-set -m  # job control: makes this shell a process group leader
-
 PIDFILE=".dev.pid"
 
 # Kill previous instance if running
@@ -33,9 +31,9 @@ cleanup() {
 }
 trap cleanup EXIT INT TERM
 
-# Start server and client
-npm run dev:server &
-npm run dev:client &
+# Start server and client (redirect stdin to prevent SIGTTIN from job control)
+npm run dev:server </dev/null &
+npm run dev:client </dev/null &
 
 # Wait for both
 wait
