@@ -29,6 +29,7 @@ import {
   isValidConversationId,
   loadConversations,
   loadMessages,
+  setDevServerStatus,
   setWorktreeCwd,
   touchConversation,
 } from "./store.js";
@@ -105,6 +106,20 @@ function sendToConversation(conversationId: string, obj: ServerMessage): void {
   }
 }
 
+function broadcastServerStatus(
+  conversationId: string,
+  status: DevServerStatus,
+  ports?: Record<string, number>,
+): void {
+  setDevServerStatus(conversationId, status);
+  sendToConversation(conversationId, {
+    type: "server_status",
+    conversationId,
+    status,
+    ...(ports && { ports }),
+  });
+}
+
 function getServerStatus(conversationId: string): DevServerStatus {
   return serverProcesses.has(conversationId) ? "running" : "stopped";
 }
@@ -115,11 +130,7 @@ function killServerProcess(conversationId: string): void {
   const { process: proc, killTimeout } = entry;
   if (killTimeout) clearTimeout(killTimeout);
 
-  sendToConversation(conversationId, {
-    type: "server_status",
-    conversationId,
-    status: "stopping",
-  });
+  broadcastServerStatus(conversationId, "stopping");
 
   const pid = proc.pid;
   if (pid) {
@@ -138,22 +149,14 @@ function killServerProcess(conversationId: string): void {
       setTimeout(() => {
         if (serverProcesses.has(conversationId)) {
           serverProcesses.delete(conversationId);
-          sendToConversation(conversationId, {
-            type: "server_status",
-            conversationId,
-            status: "stopped",
-          });
+          broadcastServerStatus(conversationId, "stopped");
         }
       }, 2000);
     }, 3000);
     serverProcesses.set(conversationId, { process: proc, killTimeout: timeout });
   } else {
     serverProcesses.delete(conversationId);
-    sendToConversation(conversationId, {
-      type: "server_status",
-      conversationId,
-      status: "stopped",
-    });
+    broadcastServerStatus(conversationId, "stopped");
   }
 }
 
@@ -403,7 +406,7 @@ wss.on("connection", (ws: WebSocket) => {
         return;
       }
       const projectRoot = sConv.projectId ? getProjectPath(sConv.projectId) : undefined;
-      if (projectRoot && !sConv.worktreeCwd.startsWith(projectRoot)) {
+      if (projectRoot && !sConv.worktreeCwd.startsWith(`${projectRoot}${path.sep}`)) {
         send({ type: "error", data: "Worktree path is outside project directory" });
         return;
       }
@@ -415,11 +418,7 @@ wss.on("connection", (ws: WebSocket) => {
         });
         return;
       }
-      send({
-        type: "server_status",
-        conversationId: currentConversationId,
-        status: "starting",
-      });
+      broadcastServerStatus(currentConversationId, "starting");
       const sConvId = currentConversationId;
       const serverChild = spawn("bash", [scriptPath], {
         cwd: sConv.worktreeCwd,
@@ -432,11 +431,7 @@ wss.on("connection", (ws: WebSocket) => {
       serverChild.stdout?.on("data", (chunk: Buffer) => {
         if (firstOutput) {
           firstOutput = false;
-          sendToConversation(sConvId, {
-            type: "server_status",
-            conversationId: sConvId,
-            status: "running",
-          });
+          broadcastServerStatus(sConvId, "running");
         }
         sendToConversation(sConvId, {
           type: "server_output",
@@ -448,11 +443,7 @@ wss.on("connection", (ws: WebSocket) => {
       serverChild.stderr?.on("data", (chunk: Buffer) => {
         if (firstOutput) {
           firstOutput = false;
-          sendToConversation(sConvId, {
-            type: "server_status",
-            conversationId: sConvId,
-            status: "running",
-          });
+          broadcastServerStatus(sConvId, "running");
         }
         sendToConversation(sConvId, {
           type: "server_output",
@@ -466,11 +457,7 @@ wss.on("connection", (ws: WebSocket) => {
         const entry = serverProcesses.get(sConvId);
         if (entry?.killTimeout) clearTimeout(entry.killTimeout);
         serverProcesses.delete(sConvId);
-        sendToConversation(sConvId, {
-          type: "server_status",
-          conversationId: sConvId,
-          status: "stopped",
-        });
+        broadcastServerStatus(sConvId, "stopped");
         sendToConversation(sConvId, {
           type: "server_output",
           conversationId: sConvId,
@@ -481,11 +468,7 @@ wss.on("connection", (ws: WebSocket) => {
       serverChild.on("error", (err) => {
         console.error(`SERVER: [error] session=${sConvId} error=${err.message}`);
         serverProcesses.delete(sConvId);
-        sendToConversation(sConvId, {
-          type: "server_status",
-          conversationId: sConvId,
-          status: "stopped",
-        });
+        broadcastServerStatus(sConvId, "stopped");
       });
       return;
     }
@@ -675,12 +658,7 @@ wss.on("connection", (ws: WebSocket) => {
           .then((ports) => {
             if (Object.keys(ports).length > 0) {
               console.log(`PORTS: [allocated] session=${convId} ports=${JSON.stringify(ports)}`);
-              send({
-                type: "server_status",
-                conversationId: convId,
-                status: "stopped",
-                ports,
-              });
+              broadcastServerStatus(convId, "stopped", ports);
             }
           })
           .catch((err) => {

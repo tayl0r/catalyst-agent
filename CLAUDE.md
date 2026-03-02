@@ -52,7 +52,7 @@ Each conversation gets a UUID. The Claude CLI is invoked with `--session-id <uui
 - **Language:** TypeScript (strict mode), ES modules throughout
 - **Client:** React 19, Vite 6, Tailwind CSS 3, react-markdown + remark-gfm
 - **Server:** Node.js, Express 4, ws (WebSocket), tsx (runtime, no build step), JSON file storage (no external DB)
-- **Root:** concurrently (parallel dev scripts), npm workspaces-style postinstall
+- **Root:** npm scripts with bash process-group management (see `scripts/dev.sh`), npm workspaces-style postinstall
 
 ## Pre-commit
 

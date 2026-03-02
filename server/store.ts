@@ -1,7 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import type { Conversation, UIMessage } from "@shared/types.js";
+import type { Conversation, DevServerStatus, UIMessage } from "@shared/types.js";
 import { atomicWrite, isValidId, readJson } from "./utils.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -61,8 +61,15 @@ function buildIndex(): void {
   }
 }
 
-// Build index on startup
+// Build index on startup and reset stale dev server statuses
+// (processes don't survive server restarts)
 buildIndex();
+for (const conv of conversationIndex.values()) {
+  if (conv.devServerStatus === "running" || conv.devServerStatus === "starting") {
+    conv.devServerStatus = undefined;
+    atomicWrite(conversationPath(conv.id), JSON.stringify(conv, null, 2));
+  }
+}
 
 // --- Public API ---
 
@@ -130,6 +137,14 @@ export function setConversationPorts(id: string, ports: Record<string, number>):
   const conv = conversationIndex.get(id);
   if (!conv) return;
   conv.ports = ports;
+  atomicWrite(conversationPath(id), JSON.stringify(conv, null, 2));
+}
+
+export function setDevServerStatus(id: string, status: DevServerStatus): void {
+  if (!isValidConversationId(id)) return;
+  const conv = conversationIndex.get(id);
+  if (!conv) return;
+  conv.devServerStatus = status === "stopped" ? undefined : status;
   atomicWrite(conversationPath(id), JSON.stringify(conv, null, 2));
 }
 

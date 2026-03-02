@@ -57,6 +57,9 @@ export default function useWebSocket(): UseWebSocketReturn {
   const discardStreamRef = useRef(false);
   // Track current conversation for reconnect
   const currentConversationRef = useRef<Conversation | null>(null);
+  // Buffer server log chunks and flush once per animation frame
+  const logBufferRef = useRef<string[]>([]);
+  const logRafRef = useRef<number | null>(null);
 
   // Keep ref in sync with state
   useEffect(() => {
@@ -231,10 +234,18 @@ export default function useWebSocket(): UseWebSocketReturn {
 
         case "server_output":
           if (msg.conversationId !== currentConversationRef.current?.id) break;
-          setServerLogs((prev) => {
-            const next = [...prev, msg.data];
-            return next.length > 5000 ? next.slice(-5000) : next;
-          });
+          logBufferRef.current.push(msg.data);
+          if (logRafRef.current === null) {
+            logRafRef.current = requestAnimationFrame(() => {
+              logRafRef.current = null;
+              const chunks = logBufferRef.current;
+              logBufferRef.current = [];
+              setServerLogs((prev) => {
+                const next = prev.concat(chunks);
+                return next.length > 5000 ? next.slice(-5000) : next;
+              });
+            });
+          }
           break;
 
         case "server_status":
@@ -274,6 +285,7 @@ export default function useWebSocket(): UseWebSocketReturn {
     return () => {
       mountedRef.current = false;
       if (reconnectTimer.current) clearTimeout(reconnectTimer.current);
+      if (logRafRef.current !== null) cancelAnimationFrame(logRafRef.current);
       wsRef.current?.close();
     };
   }, [connect]);
@@ -318,6 +330,7 @@ export default function useWebSocket(): UseWebSocketReturn {
       setMessages([]);
       setCurrentConversation(null);
       setServerStatus("stopped");
+      logBufferRef.current = [];
       setServerLogs([]);
       setServerPorts(null);
       wsSend({ type: "create_conversation", name, projectId });
@@ -333,6 +346,7 @@ export default function useWebSocket(): UseWebSocketReturn {
       streamingTextRef.current = "";
       setMessages([]);
       setServerStatus("stopped");
+      logBufferRef.current = [];
       setServerLogs([]);
       setServerPorts(null);
       wsSend({ type: "start", conversationId });
@@ -348,6 +362,10 @@ export default function useWebSocket(): UseWebSocketReturn {
         if (prev?.id === conversationId) {
           discardStreamRef.current = true;
           setMessages([]);
+          setServerStatus("stopped");
+          logBufferRef.current = [];
+          setServerLogs([]);
+          setServerPorts(null);
           return null;
         }
         return prev;
