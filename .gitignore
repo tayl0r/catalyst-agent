@@ -15,3 +15,5 @@ src-tauri/gen/
 .worktrees/
 server/data/
 .dev.pid
+start.local.sh
+PORTS.LOCAL.md

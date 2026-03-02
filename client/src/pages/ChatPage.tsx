@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import ChatMessage from "../components/ChatMessage";
 import InputArea from "../components/InputArea";
@@ -40,10 +40,27 @@ export default function ChatPage() {
   const [showServerPanel, setShowServerPanel] = useState(false);
   const [initialProjectId, setInitialProjectId] = useState<string | null>(null);
   const messagesEndRef = useRef<HTMLDivElement | null>(null);
+  const scrollContainerRef = useRef<HTMLElement | null>(null);
+  const isNearBottomRef = useRef(true);
+
+  const handleScroll = useCallback(() => {
+    const el = scrollContainerRef.current;
+    if (!el) return;
+    isNearBottomRef.current = el.scrollHeight - el.scrollTop - el.clientHeight < 80;
+  }, []);
 
   useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+    if (!isNearBottomRef.current) return;
+    const el = scrollContainerRef.current;
+    if (el) {
+      el.scrollTop = el.scrollHeight;
+    }
   }, [messages]);
+
+  // Reset scroll-to-bottom on conversation switch
+  useEffect(() => {
+    isNearBottomRef.current = true;
+  }, [currentConversation?.id]);
 
   // Open modal with pre-selected project when navigated from ProjectsPage
   useEffect(() => {
@@ -173,7 +190,11 @@ export default function ChatPage() {
         <div className="flex flex-1 overflow-hidden">
           <div className="flex flex-1 flex-col min-w-0">
             {/* Messages */}
-            <main className="flex-1 overflow-y-auto px-4 py-6">
+            <main
+              ref={scrollContainerRef}
+              onScroll={handleScroll}
+              className="flex-1 overflow-y-auto px-4 py-6"
+            >
               <div className="mx-auto max-w-5xl space-y-4">
                 {messages.length === 0 && (
                   <div className="flex h-full items-center justify-center pt-32">
