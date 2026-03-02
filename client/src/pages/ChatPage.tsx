@@ -75,6 +75,13 @@ export default function ChatPage() {
     setShowSetupDialog(false);
   }, [currentConversation?.id]);
 
+  // Auto-open server panel when server starts
+  useEffect(() => {
+    if (serverStatus === "starting" || serverStatus === "running") {
+      setShowServerPanel(true);
+    }
+  }, [serverStatus]);
+
   // Open modal with pre-selected project when navigated from ProjectsPage
   useEffect(() => {
     const state = location.state as { newConversationProjectId?: string } | null;

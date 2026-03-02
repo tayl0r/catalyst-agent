@@ -1,5 +1,28 @@
 import type { DevServerStatus } from "@shared/types";
-import { useEffect, useRef } from "react";
+import { type ReactNode, useEffect, useRef } from "react";
+
+const URL_RE = /(https?:\/\/[^\s)"'>]+)/g;
+
+function linkify(text: string): ReactNode {
+  const parts = text.split(URL_RE);
+  if (parts.length === 1) return text;
+  return parts.map((part, i) =>
+    URL_RE.test(part) ? (
+      <a
+        // biome-ignore lint/suspicious/noArrayIndexKey: stable split output
+        key={i}
+        href={part}
+        target="_blank"
+        rel="noreferrer"
+        className="text-blue-400 underline hover:text-blue-300"
+      >
+        {part}
+      </a>
+    ) : (
+      part
+    ),
+  );
+}
 
 interface ServerPanelProps {
   logs: string[];
@@ -91,7 +114,7 @@ export default function ServerPanel({ logs, status, ports, onClose }: ServerPane
           logs.map((line, i) => (
             // biome-ignore lint/suspicious/noArrayIndexKey: log lines are append-only
             <span key={i} className="whitespace-pre-wrap text-gray-400 block">
-              {line}
+              {linkify(line)}
             </span>
           ))
         )}
