@@ -19,13 +19,14 @@ Three-tier: **React client** → **WebSocket** → **Node server** → **spawned
 ## Prerequisites
 
 - [Node.js](https://nodejs.org/) (v18+)
+- [pnpm](https://pnpm.io/) (v10+) — or enable via corepack: `corepack enable`
 - [Claude Code CLI](https://docs.anthropic.com/en/docs/claude-code) installed and authenticated
 
 ## Getting Started
 
 ```bash
-npm install       # Install all dependencies
-npm run dev       # Start server (port 2999) + client (port 2998)
+pnpm install      # Install all dependencies
+pnpm run dev      # Start server (port 2999) + client (port 2998)
 ```
 
 Then open [http://localhost:2998](http://localhost:2998) in your browser.
