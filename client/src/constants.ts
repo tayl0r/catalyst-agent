@@ -6,7 +6,9 @@ export const SETUP_PROMPT = `Set up this project for Catalyst Agent. Analyze the
 
 2. \`PORTS\` — Document each \`__PORT_N__\` variable and what service uses it.
 
-3. Append a "Catalyst Agent" section to \`CLAUDE.md\` with this content:
+3. Add \`start.local.sh\`, \`PORTS.LOCAL\`, and \`.claude/worktrees/\` to \`.gitignore\` (create the file if it doesn't exist).
+
+4. Append a "Catalyst Agent" section to \`CLAUDE.md\` with this content:
 
 # Catalyst Agent
 
