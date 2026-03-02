@@ -34,6 +34,7 @@ interface UseWebSocketReturn {
   deleteConversation: (conversationId: string) => void;
   startServer: () => void;
   stopServer: () => void;
+  cleanupConversation: (conversationId: string) => void;
 }
 
 export default function useWebSocket(): UseWebSocketReturn {
@@ -201,6 +202,13 @@ export default function useWebSocket(): UseWebSocketReturn {
           // correct state before the live server_status message arrives
           if (msg.conversation?.devServerStatus) {
             setServerStatus(msg.conversation.devServerStatus);
+          }
+          // Clear server state when conversation is archived
+          if (msg.conversation?.archived) {
+            setServerStatus("stopped");
+            setServerPorts(null);
+            logBufferRef.current = [];
+            setServerLogs([]);
           }
           break;
 
@@ -382,6 +390,13 @@ export default function useWebSocket(): UseWebSocketReturn {
     wsSend({ type: "stop_server" });
   }, [wsSend]);
 
+  const cleanupConversation = useCallback(
+    (conversationId: string) => {
+      wsSend({ type: "cleanup_conversation", conversationId });
+    },
+    [wsSend],
+  );
+
   return {
     status,
     messages,
@@ -398,5 +413,6 @@ export default function useWebSocket(): UseWebSocketReturn {
     deleteConversation,
     startServer,
     stopServer,
+    cleanupConversation,
   };
 }

@@ -8,6 +8,7 @@ export interface Conversation {
   worktreeCwd?: string; // cwd reported by Claude CLI init event (worktree path)
   ports?: Record<string, number>; // allocated port numbers (e.g. { __PORT_1__: 3247 })
   devServerStatus?: DevServerStatus; // persisted dev server state
+  archived?: boolean; // conversation cleaned up — worktree removed, history preserved
   created_at: string;
   updated_at: string;
 }
@@ -86,6 +87,11 @@ export interface StopServerMessage {
   type: "stop_server";
 }
 
+export interface CleanupConversationMessage {
+  type: "cleanup_conversation";
+  conversationId: string;
+}
+
 export type ClientMessage =
   | PromptMessage
   | KillMessage
@@ -94,7 +100,8 @@ export type ClientMessage =
   | ListConversationsMessage
   | DeleteConversationMessage
   | StartServerMessage
-  | StopServerMessage;
+  | StopServerMessage
+  | CleanupConversationMessage;
 
 // --- Server-to-client messages ---
 
@@ -253,6 +260,7 @@ export function isClientMessage(msg: unknown): msg is ClientMessage {
   if (obj.type === "delete_conversation" && typeof obj.conversationId === "string") return true;
   if (obj.type === "start_server") return true;
   if (obj.type === "stop_server") return true;
+  if (obj.type === "cleanup_conversation" && typeof obj.conversationId === "string") return true;
   return false;
 }
 

@@ -1,9 +1,10 @@
-import { type ChildProcess, spawn } from "node:child_process";
+import { type ChildProcess, execFile, spawn } from "node:child_process";
 import crypto from "node:crypto";
 import fs from "node:fs";
 import http from "node:http";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { promisify } from "node:util";
 import type { DevServerStatus, ResultData, ServerMessage, UIMessage } from "@shared/types.js";
 import { isClientMessage, slugify } from "@shared/types.js";
 import dotenv from "dotenv";
@@ -22,6 +23,7 @@ import {
 } from "./project-store.js";
 import {
   appendMessage,
+  archiveConversation,
   createConversation,
   deleteConversation as deleteConv,
   getConversation,
@@ -39,6 +41,8 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 dotenv.config({
   path: [path.resolve(__dirname, "../.env.local"), path.resolve(__dirname, "../.env")],
 });
+
+const execFileAsync = promisify(execFile);
 
 const PORT = process.env.CATAGENT_SERVER_PORT || 2999;
 const MAX_CONNECTIONS = 10;
@@ -375,6 +379,68 @@ wss.on("connection", (ws: WebSocket) => {
       return;
     }
 
+    if (parsed.type === "cleanup_conversation") {
+      if (!isValidConversationId(parsed.conversationId)) {
+        send({ type: "error", data: "Invalid conversation ID" });
+        return;
+      }
+      const cleanupConv = getConversation(parsed.conversationId);
+      if (!cleanupConv) {
+        send({ type: "error", data: "Conversation not found" });
+        return;
+      }
+      if (cleanupConv.archived) {
+        send({ type: "error", data: "Conversation already archived" });
+        return;
+      }
+      // Stop dev server (no-ops if none)
+      killServerProcess(parsed.conversationId);
+      // Stop Claude CLI if this connection owns it. Note: CLI processes
+      // from other WS connections are not tracked globally (unlike dev servers),
+      // so multi-tab cleanup may leave an orphaned CLI process that will
+      // exit on its own when the worktree disappears.
+      if (currentConversationId === parsed.conversationId) {
+        killProcess();
+      }
+      // Remove worktree and branch asynchronously.
+      // Branch name is assumed to match conv.slug (set via `claude -w <slug>`).
+      // If the CLI used a different name, the branch delete will fail and log a warning.
+      const worktreeCwd = cleanupConv.worktreeCwd;
+      const branchName = cleanupConv.slug;
+      const cleanupProjectRoot = cleanupConv.projectId
+        ? getProjectPath(cleanupConv.projectId)
+        : undefined;
+      if (worktreeCwd && cleanupProjectRoot) {
+        try {
+          await execFileAsync("git", ["worktree", "remove", worktreeCwd, "--force"], {
+            cwd: cleanupProjectRoot,
+            timeout: 15000,
+          });
+        } catch (err) {
+          console.warn(`CLEANUP: worktree remove failed: ${(err as Error).message}`);
+        }
+        try {
+          await execFileAsync("git", ["branch", "-D", branchName], {
+            cwd: cleanupProjectRoot,
+            timeout: 5000,
+          });
+        } catch (err) {
+          console.warn(`CLEANUP: branch delete failed: ${(err as Error).message}`);
+        }
+      }
+      // Archive the conversation (clears worktreeCwd, ports, devServerStatus)
+      archiveConversation(parsed.conversationId);
+      const archivedConv = getConversation(parsed.conversationId);
+      if (archivedConv) {
+        sendToConversation(parsed.conversationId, {
+          type: "conversation",
+          conversation: archivedConv,
+        });
+      }
+      broadcastConversationList();
+      return;
+    }
+
     if (parsed.type === "start_server") {
       if (!currentConversationId) {
         send({ type: "error", data: "No conversation selected" });
@@ -387,6 +453,10 @@ wss.on("connection", (ws: WebSocket) => {
       const sConv = getConversation(currentConversationId);
       if (!sConv?.worktreeCwd) {
         send({ type: "error", data: "No worktree directory available" });
+        return;
+      }
+      if (sConv.archived) {
+        send({ type: "error", data: "Conversation is archived" });
         return;
       }
       const projectRoot = sConv.projectId ? getProjectPath(sConv.projectId) : undefined;
@@ -555,6 +625,10 @@ wss.on("connection", (ws: WebSocket) => {
     const conv = getConversation(currentConversationId);
     if (!conv) {
       send({ type: "error", data: "Conversation not found" });
+      return;
+    }
+    if (conv.archived) {
+      send({ type: "error", data: "Conversation is archived" });
       return;
     }
 

@@ -26,6 +26,7 @@ export default function ChatPage() {
     deleteConversation,
     startServer,
     stopServer,
+    cleanupConversation,
   } = useWebSocket();
 
   const { projects } = useProjects();
@@ -108,6 +109,11 @@ export default function ChatPage() {
           <div className="min-w-0 flex-1">
             <h1 className="text-lg font-semibold text-gray-100 truncate">
               {currentConversation?.name ?? "New conversation"}
+              {currentConversation?.archived && (
+                <span className="ml-2 rounded bg-gray-700 px-1.5 py-0.5 text-xs font-normal text-gray-400">
+                  Archived
+                </span>
+              )}
             </h1>
             {currentConversation && (
               <div className="flex items-center gap-2 text-xs text-gray-500 truncate">
@@ -137,7 +143,41 @@ export default function ChatPage() {
             )}
           </div>
           <div className="flex items-center gap-2">
-            {serverPorts && (
+            {currentConversation &&
+              !currentConversation.archived &&
+              currentConversation.worktreeCwd && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (
+                      window.confirm(
+                        "Archive this conversation? This will stop the server, kill the process, and remove the worktree. Chat history is preserved.",
+                      )
+                    ) {
+                      cleanupConversation(currentConversation.id);
+                    }
+                  }}
+                  className="flex items-center gap-1 rounded px-2 py-1 text-xs text-yellow-400 hover:bg-gray-800 transition-colors"
+                  title="Archive conversation (stop server, remove worktree)"
+                >
+                  <svg
+                    className="h-3.5 w-3.5"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth={2}
+                    viewBox="0 0 24 24"
+                    aria-hidden="true"
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      d="m20.25 7.5-.625 10.632a2.25 2.25 0 0 1-2.247 2.118H6.622a2.25 2.25 0 0 1-2.247-2.118L3.75 7.5m8.25 3v6.75m0 0-3-3m3 3 3-3M3.375 7.5h17.25c.621 0 1.125-.504 1.125-1.125v-1.5c0-.621-.504-1.125-1.125-1.125H3.375c-.621 0-1.125.504-1.125 1.125v1.5c0 .621.504 1.125 1.125 1.125Z"
+                    />
+                  </svg>
+                  Cleanup
+                </button>
+              )}
+            {serverPorts && !currentConversation?.archived && (
               <>
                 {serverStatus === "stopped" ? (
                   <button
@@ -221,7 +261,9 @@ export default function ChatPage() {
               onSend={sendPrompt}
               onStop={killProcess}
               isProcessing={isProcessing}
-              disabled={status !== "connected" || !currentConversation}
+              disabled={
+                status !== "connected" || !currentConversation || !!currentConversation.archived
+              }
             />
           </div>
 

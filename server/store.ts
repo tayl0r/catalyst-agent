@@ -163,6 +163,19 @@ export function getAllUsedPorts(): Set<number> {
   return used;
 }
 
+export function archiveConversation(id: string): Conversation | undefined {
+  if (!isValidConversationId(id)) return undefined;
+  const conv = conversationIndex.get(id);
+  if (!conv) return undefined;
+  conv.archived = true;
+  conv.worktreeCwd = undefined;
+  conv.ports = undefined;
+  conv.devServerStatus = undefined;
+  conv.updated_at = new Date().toISOString();
+  atomicWrite(conversationPath(id), JSON.stringify(conv, null, 2));
+  return conv;
+}
+
 export function deleteConversation(id: string): void {
   if (!isValidConversationId(id)) return;
   conversationIndex.delete(id);

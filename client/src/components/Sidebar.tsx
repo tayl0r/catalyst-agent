@@ -129,7 +129,12 @@ export default function Sidebar({
               }`}
             >
               <div className="min-w-0 flex-1">
-                <p className="truncate text-sm">{conv.name}</p>
+                <p className="truncate text-sm">
+                  {conv.name}
+                  {conv.archived && (
+                    <span className="ml-1.5 text-[10px] text-gray-600">[archived]</span>
+                  )}
+                </p>
                 <div className="flex items-center gap-1.5 mt-0.5">
                   {project && (
                     <>
