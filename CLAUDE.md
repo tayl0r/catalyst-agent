@@ -47,7 +47,7 @@ server/          # Express + ws library (TypeScript, ES modules, runs via tsx)
 
 ### Session Management
 
-Each conversation gets a UUID. The Claude CLI is invoked with `--session-id <uuid>` on the first prompt (creates session) and `--resume <uuid>` on subsequent prompts (loads prior context). Conversation metadata and messages are persisted in `server/data/` as JSON files. The conversation record is created lazily on the first prompt, not on WebSocket connect.
+Each conversation gets a UUID. The Claude CLI is invoked with `--session-id <uuid>` on the first prompt (creates session) and `--resume <uuid>` on subsequent prompts (loads prior context). Conversation metadata and messages are persisted in `server/data/` as JSON files. The conversation record is created when the user submits the New Conversation modal, before any prompt is sent.
 
 ## Tech Stack
 
@@ -73,7 +73,7 @@ Always run `npm run lint:fix` before committing to ensure code passes linting an
 - **`@shared` path alias:** Configured in tsconfig `paths` AND `vite.config.js` `resolve.alias` — both must stay in sync
 - **CLAUDECODE env var:** Server removes this before spawning Claude CLI to prevent "nested session" errors
 - **Session flags:** First prompt uses `--session-id <uuid>`, subsequent prompts use `--resume <uuid>` — both combined with `-p` pipe mode
-- **Lazy conversation creation:** Conversation DB records are created on first prompt, not on WebSocket connect, to avoid orphan records
+- **Conversation creation:** Conversation DB records are created when the user submits the New Conversation modal (`create_conversation` message), before any prompt is sent. The record exists with a real UUID by the time the user can type.
 - **Atomic file writes:** store.ts writes to `.tmp` then renames to prevent corruption from crashes
 - **NDJSON line buffering:** Claude CLI outputs newline-delimited JSON but chunks may split mid-line — server maintains a buffer and flushes incomplete lines on process close
 - **Vite proxy required:** Client dev server proxies `/ws` to the server port (see `vite.config.js`) — without this, WebSocket connections fail in dev mode
