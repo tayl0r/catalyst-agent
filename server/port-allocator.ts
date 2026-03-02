@@ -13,9 +13,9 @@ let mutexPromise: Promise<void> = Promise.resolve();
 
 export function scanPortVars(content: string): string[] {
   const vars = new Set<string>();
-  const re = /\bPORT([1-9])\b/g;
+  const re = /__PORT_(\d+)__/g;
   for (const match of content.matchAll(re)) {
-    vars.add(`PORT${match[1]}`);
+    vars.add(`__PORT_${match[1]}__`);
   }
   return [...vars].sort();
 }
@@ -43,7 +43,7 @@ export async function pickAvailablePort(usedPorts: Set<number>): Promise<number>
 export function processTemplate(content: string, ports: Record<string, number>): string {
   let result = content;
   for (const [varName, port] of Object.entries(ports)) {
-    result = result.replace(new RegExp(`\\b${varName}\\b`, "g"), String(port));
+    result = result.replaceAll(varName, String(port));
   }
   return result;
 }
@@ -71,7 +71,7 @@ export async function allocatePorts(
 
   if (!portsContent && !startContent) return {};
 
-  // Scan both files for PORTn vars
+  // Scan both files for __PORT_N__ vars
   const vars = [...new Set([...scanPortVars(portsContent), ...scanPortVars(startContent)])].sort();
 
   if (vars.length === 0) return {};
@@ -127,7 +127,7 @@ export async function allocatePorts(
           "",
           "Your dev server ports are defined in PORTS.LOCAL.md (auto-generated per worktree).",
           "Start the server with start.local.sh. Do not edit PORTS.LOCAL.md or start.local.sh",
-          "directly — edit PORTS.md and start.sh (using PORTn template variables) instead.",
+          "directly — edit PORTS.md and start.sh (using __PORT_N__ template variables) instead.",
         ].join("\n");
         atomicWrite(claudeMdPath, `${existing}${section}\n`);
       }

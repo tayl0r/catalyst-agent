@@ -77,4 +77,5 @@ Always run `npm run lint:fix` before committing to ensure code passes linting an
 - **Vite proxy required:** Client dev server proxies `/ws` to the server port (see `vite.config.js`) — without this, WebSocket connections fail in dev mode
 - **Process kill flow:** SIGTERM first, then SIGKILL after 3s timeout if process doesn't exit
 - **Vite is transpile-only:** Vite does not run `tsc` — type errors won't fail the dev server or build. Run `npm run typecheck` separately
+- **Port template variables:** `start.sh` and `PORTS.md` use `__PORT_1__`, `__PORT_2__`, etc. as template variables (regex `/__PORT_(\d+)__/`), replaced with real port numbers in the generated `.local` files
 - **No tests:** Project has no test infrastructure — all testing is manual
