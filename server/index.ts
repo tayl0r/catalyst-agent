@@ -69,9 +69,36 @@ const serverProcesses = new Map<
   { process: ChildProcess; killTimeout: ReturnType<typeof setTimeout> | null }
 >();
 
-function broadcastServerMessage(_conversationId: string, obj: ServerMessage): void {
+// Track which WS clients are viewing which conversation
+const conversationClients = new Map<string, Set<WebSocket>>();
+
+function trackClient(ws: WebSocket, conversationId: string, previousId: string | null): void {
+  if (previousId) {
+    conversationClients.get(previousId)?.delete(ws);
+  }
+  let clients = conversationClients.get(conversationId);
+  if (!clients) {
+    clients = new Set();
+    conversationClients.set(conversationId, clients);
+  }
+  clients.add(ws);
+}
+
+function untrackClient(ws: WebSocket, conversationId: string | null): void {
+  if (conversationId) {
+    const clients = conversationClients.get(conversationId);
+    if (clients) {
+      clients.delete(ws);
+      if (clients.size === 0) conversationClients.delete(conversationId);
+    }
+  }
+}
+
+function sendToConversation(conversationId: string, obj: ServerMessage): void {
+  const clients = conversationClients.get(conversationId);
+  if (!clients) return;
   const data = JSON.stringify(obj);
-  for (const client of wss.clients) {
+  for (const client of clients) {
     if (client.readyState === WebSocket.OPEN) {
       client.send(data);
     }
@@ -88,7 +115,7 @@ function killServerProcess(conversationId: string): void {
   const { process: proc, killTimeout } = entry;
   if (killTimeout) clearTimeout(killTimeout);
 
-  broadcastServerMessage(conversationId, {
+  sendToConversation(conversationId, {
     type: "server_status",
     conversationId,
     status: "stopping",
@@ -111,7 +138,7 @@ function killServerProcess(conversationId: string): void {
       setTimeout(() => {
         if (serverProcesses.has(conversationId)) {
           serverProcesses.delete(conversationId);
-          broadcastServerMessage(conversationId, {
+          sendToConversation(conversationId, {
             type: "server_status",
             conversationId,
             status: "stopped",
@@ -122,7 +149,7 @@ function killServerProcess(conversationId: string): void {
     serverProcesses.set(conversationId, { process: proc, killTimeout: timeout });
   } else {
     serverProcesses.delete(conversationId);
-    broadcastServerMessage(conversationId, {
+    sendToConversation(conversationId, {
       type: "server_status",
       conversationId,
       status: "stopped",
@@ -379,17 +406,11 @@ wss.on("connection", (ws: WebSocket) => {
       }
       const scriptPath = path.join(sConv.worktreeCwd, "start.local.sh");
       if (!fs.existsSync(scriptPath)) {
-        // Try to generate from templates
-        try {
-          await allocatePorts(currentConversationId, sConv.worktreeCwd);
-        } catch (err) {
-          send({ type: "error", data: `Port allocation failed: ${(err as Error).message}` });
-          return;
-        }
-        if (!fs.existsSync(scriptPath)) {
-          send({ type: "error", data: "No start.sh found in worktree" });
-          return;
-        }
+        send({
+          type: "error",
+          data: "No start.local.sh found in worktree (ports are allocated on init)",
+        });
+        return;
       }
       send({
         type: "server_status",
@@ -408,13 +429,13 @@ wss.on("connection", (ws: WebSocket) => {
       serverChild.stdout?.on("data", (chunk: Buffer) => {
         if (firstOutput) {
           firstOutput = false;
-          broadcastServerMessage(sConvId, {
+          sendToConversation(sConvId, {
             type: "server_status",
             conversationId: sConvId,
             status: "running",
           });
         }
-        broadcastServerMessage(sConvId, {
+        sendToConversation(sConvId, {
           type: "server_output",
           conversationId: sConvId,
           data: chunk.toString(),
@@ -424,13 +445,13 @@ wss.on("connection", (ws: WebSocket) => {
       serverChild.stderr?.on("data", (chunk: Buffer) => {
         if (firstOutput) {
           firstOutput = false;
-          broadcastServerMessage(sConvId, {
+          sendToConversation(sConvId, {
             type: "server_status",
             conversationId: sConvId,
             status: "running",
           });
         }
-        broadcastServerMessage(sConvId, {
+        sendToConversation(sConvId, {
           type: "server_output",
           conversationId: sConvId,
           data: chunk.toString(),
@@ -442,12 +463,12 @@ wss.on("connection", (ws: WebSocket) => {
         const entry = serverProcesses.get(sConvId);
         if (entry?.killTimeout) clearTimeout(entry.killTimeout);
         serverProcesses.delete(sConvId);
-        broadcastServerMessage(sConvId, {
+        sendToConversation(sConvId, {
           type: "server_status",
           conversationId: sConvId,
           status: "stopped",
         });
-        broadcastServerMessage(sConvId, {
+        sendToConversation(sConvId, {
           type: "server_output",
           conversationId: sConvId,
           data: `\nProcess exited with code ${code}\n`,
@@ -457,7 +478,7 @@ wss.on("connection", (ws: WebSocket) => {
       serverChild.on("error", (err) => {
         console.error(`SERVER: [error] session=${sConvId} error=${err.message}`);
         serverProcesses.delete(sConvId);
-        broadcastServerMessage(sConvId, {
+        sendToConversation(sConvId, {
           type: "server_status",
           conversationId: sConvId,
           status: "stopped",
@@ -501,6 +522,7 @@ wss.on("connection", (ws: WebSocket) => {
       }
       killProcess();
       const conv = createConversation(id, trimmedName, slug, parsed.projectId);
+      trackClient(ws, id, currentConversationId);
       currentConversationId = id;
       pendingProjectId = parsed.projectId;
       isFirstPrompt = true;
@@ -890,12 +912,22 @@ if (fs.existsSync(clientDist)) {
   });
 }
 
-// Kill all spawned processes on server shutdown (e.g. tsx watch restart)
+// Kill all spawned processes on server shutdown (e.g. tsx watch restart).
+// Timers won't fire during shutdown so we SIGKILL process groups directly
+// instead of using killServerProcess()'s async SIGTERM+timeout flow.
 function shutdownAll() {
-  // Kill all dev server processes
-  for (const [convId] of serverProcesses) {
-    killServerProcess(convId);
+  for (const [, entry] of serverProcesses) {
+    if (entry.killTimeout) clearTimeout(entry.killTimeout);
+    const pid = entry.process.pid;
+    if (pid) {
+      try {
+        process.kill(-pid, "SIGKILL");
+      } catch {
+        // ESRCH — already gone
+      }
+    }
   }
+  serverProcesses.clear();
   for (const client of wss.clients) {
     client.close();
   }
