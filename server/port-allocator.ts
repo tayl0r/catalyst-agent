@@ -14,7 +14,12 @@ let mutexPromise: Promise<void> = Promise.resolve();
 export function scanPortVars(content: string): string[] {
   const vars = new Set<string>();
   const re = /__PORT_(\d+)__/g;
-  for (const match of content.matchAll(re)) {
+  // Skip comment lines (starting with #) to avoid matching port vars in documentation
+  const nonCommentContent = content
+    .split("\n")
+    .filter((line) => !line.trimStart().startsWith("#"))
+    .join("\n");
+  for (const match of nonCommentContent.matchAll(re)) {
     vars.add(`__PORT_${match[1]}__`);
   }
   return [...vars].sort();
@@ -41,11 +46,17 @@ export async function pickAvailablePort(usedPorts: Set<number>): Promise<number>
 }
 
 export function processTemplate(content: string, ports: Record<string, number>): string {
-  let result = content;
-  for (const [varName, port] of Object.entries(ports)) {
-    result = result.replaceAll(varName, String(port));
-  }
-  return result;
+  return content
+    .split("\n")
+    .map((line) => {
+      if (line.trimStart().startsWith("#")) return line;
+      let result = line;
+      for (const [varName, port] of Object.entries(ports)) {
+        result = result.replaceAll(varName, String(port));
+      }
+      return result;
+    })
+    .join("\n");
 }
 
 export async function allocatePorts(
@@ -55,13 +66,13 @@ export async function allocatePorts(
   // Read template files
   let portsContent = "";
   let startContent = "";
-  const portsMdPath = path.join(worktreeCwd, "PORTS.md");
+  const portsMdPath = path.join(worktreeCwd, "PORTS");
   const startShPath = path.join(worktreeCwd, "start.sh");
 
   try {
     portsContent = fs.readFileSync(portsMdPath, "utf8");
   } catch {
-    // no PORTS.md
+    // no PORTS
   }
   try {
     startContent = fs.readFileSync(startShPath, "utf8");
@@ -96,7 +107,7 @@ export async function allocatePorts(
 
     // Write processed templates
     if (portsContent) {
-      const localPortsMd = path.join(worktreeCwd, "PORTS.LOCAL.md");
+      const localPortsMd = path.join(worktreeCwd, "PORTS.LOCAL");
       atomicWrite(localPortsMd, processTemplate(portsContent, ports));
     }
 
@@ -109,9 +120,9 @@ export async function allocatePorts(
     // Persist to conversation
     setConversationPorts(conversationId, ports);
 
-    // Append PORTS.LOCAL.md reference to worktree CLAUDE.md
+    // Append PORTS.LOCAL reference to worktree CLAUDE.md
     const claudeMdPath = path.join(worktreeCwd, "CLAUDE.md");
-    const marker = "PORTS.LOCAL.md";
+    const marker = "PORTS.LOCAL";
     try {
       let existing = "";
       try {
@@ -125,9 +136,9 @@ export async function allocatePorts(
           "",
           "# Dev Server Ports",
           "",
-          "Your dev server ports are defined in PORTS.LOCAL.md (auto-generated per worktree).",
-          "Start the server with start.local.sh. Do not edit PORTS.LOCAL.md or start.local.sh",
-          "directly — edit PORTS.md and start.sh (using __PORT_N__ template variables) instead.",
+          "Your dev server ports are defined in PORTS.LOCAL (auto-generated per worktree).",
+          "Start the server with start.local.sh. Do not edit PORTS.LOCAL or start.local.sh",
+          "directly — edit PORTS and start.sh (using __PORT_N__ template variables) instead.",
         ].join("\n");
         atomicWrite(claudeMdPath, `${existing}${section}\n`);
       }

@@ -49,11 +49,11 @@ function writeClaudeMd(projectPath: string): void {
     "# Catalyst Agent",
     "",
     "This project is managed by Catalyst Agent. Your dev server ports are defined in",
-    "PORTS.LOCAL.md (auto-generated per worktree). Start the server with start.local.sh.",
+    "PORTS.LOCAL (auto-generated per worktree). Start the server with start.local.sh.",
     "If you need to change how the server is started, edit both start.sh (using __PORT_N__",
     "template vars) and start.local.sh (using real port numbers).",
-    "If you need additional ports while making changes, add another entry to PORTS.md",
-    "and PORTS.LOCAL.md.",
+    "If you need additional ports while making changes, add another entry to PORTS",
+    "and PORTS.LOCAL.",
   ].join("\n");
 
   try {
@@ -111,7 +111,7 @@ function scaffoldProject(projectPath: string): void {
     // 2. .gitignore (only if git repo exists, create or append)
     if (hasGit) {
       const gitignorePath = path.join(projectPath, ".gitignore");
-      const localEntries = "start.local.sh\nPORTS.LOCAL.md\n";
+      const localEntries = "start.local.sh\nPORTS.LOCAL\n";
       if (!fs.existsSync(gitignorePath)) {
         atomicWrite(
           gitignorePath,
@@ -174,8 +174,8 @@ function scaffoldProject(projectPath: string): void {
       fs.chmodSync(startShPath, 0o755);
     }
 
-    // 6. PORTS.md template (skip if exists)
-    const portsMdPath = path.join(projectPath, "PORTS.md");
+    // 6. PORTS template (skip if exists)
+    const portsMdPath = path.join(projectPath, "PORTS");
     if (!fs.existsSync(portsMdPath)) {
       atomicWrite(
         portsMdPath,
@@ -183,10 +183,10 @@ function scaffoldProject(projectPath: string): void {
           "# Port Assignments",
           "",
           "This file defines the port template variables for this project.",
-          "Each __PORT_N__ variable will be replaced with a real port number in PORTS.LOCAL.md.",
+          "Each __PORT_N__ variable will be replaced with a real port number in PORTS.LOCAL.",
           "Update this file to add more ports as your project needs them.",
           "",
-          "- __PORT_1__: Main dev server",
+          "__PORT_1__: Main dev server",
           "",
         ].join("\n"),
       );
