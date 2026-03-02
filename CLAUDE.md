@@ -6,12 +6,13 @@ Browser-based web interface for the Claude CLI with real-time streaming chat.
 
 ```bash
 npm install          # Install root, server, and client deps (postinstall handles nested installs)
-npm run dev          # Run server + client concurrently
+npm run dev          # Run server + client in parallel (auto-kills previous instance via .dev.pid)
+npm run dev:stop     # Stop the running dev server
 npm run dev:server   # Server only (port 2999)
 npm run dev:client   # Client only (port 2998)
 ```
 
-Typecheck: `cd server && npm run typecheck` / `cd client && npm run typecheck`
+Typecheck: `npm run typecheck` (both) / `cd server && npm run typecheck` / `cd client && npm run typecheck`
 
 Lint: `npm run lint` (check) / `npm run lint:fix` (auto-fix) / `npm run format` (format only)
 
@@ -26,8 +27,8 @@ shared/          # Shared TypeScript types (imported by both client and server v
   types.ts       # ClientMessage, ServerMessage, UIMessage, Conversation, ConnectionStatus
 client/          # React 19 + Vite + Tailwind CSS (TypeScript, ES modules)
   src/
-    components/  # ChatMessage, InputArea, Sidebar, NewConversationModal, StreamingIndicator
-      events/    # EventRenderer, TextBlock, ThinkingBlock, ToolUseBlock, ToolResultBlock
+    components/  # ChatMessage, InputArea, Sidebar, NewConversationModal, ServerPanel, StatusIndicator, StreamingIndicator
+      events/    # EventRenderer, AskUserQuestionBlock, ResultSummary, TextBlock, ThinkingBlock, ToolUseBlock, ToolResultBlock
     hooks/       # useWebSocket (connection/messages), useProjects (project CRUD)
     pages/       # ChatPage, ProjectsPage
     utils/       # filterEvent (assistant event filtering)
@@ -36,6 +37,7 @@ server/          # Express + ws library (TypeScript, ES modules, runs via tsx)
   index.ts       # HTTP, WebSocket, process management, session flags
   store.ts       # JSON file persistence for conversations and messages
   project-store.ts # Project CRUD operations
+  port-allocator.ts # Port allocation for worktree dev servers (__PORT_N__ templates)
   utils.ts       # Shared server utilities (atomic writes, validation)
   data/          # Runtime data directory (gitignored)
     conversations/<uuid>.json
@@ -52,7 +54,7 @@ Each conversation gets a UUID. The Claude CLI is invoked with `--session-id <uui
 - **Language:** TypeScript (strict mode), ES modules throughout
 - **Client:** React 19, Vite 6, Tailwind CSS 3, react-markdown + remark-gfm
 - **Server:** Node.js, Express 4, ws (WebSocket), tsx (runtime, no build step), JSON file storage (no external DB)
-- **Root:** npm scripts with bash process-group management (see `scripts/dev.sh`), npm workspaces-style postinstall
+- **Root:** npm scripts with PID-tracked dev server (`.dev.pid`), auto-restart on `npm run dev`, explicit stop via `npm run dev:stop`
 
 ## Pre-commit
 
@@ -77,5 +79,5 @@ Always run `npm run lint:fix` before committing to ensure code passes linting an
 - **Vite proxy required:** Client dev server proxies `/ws` to the server port (see `vite.config.js`) — without this, WebSocket connections fail in dev mode
 - **Process kill flow:** SIGTERM first, then SIGKILL after 3s timeout if process doesn't exit
 - **Vite is transpile-only:** Vite does not run `tsc` — type errors won't fail the dev server or build. Run `npm run typecheck` separately
-- **Port template variables:** `start.sh` and `PORTS.md` use `__PORT_1__`, `__PORT_2__`, etc. as template variables (regex `/__PORT_(\d+)__/`), replaced with real port numbers in the generated `.local` files
+- **Port template variables:** Projects can include `start.sh` and `PORTS.md` with `__PORT_1__`, `__PORT_2__`, etc. as template variables (regex `/__PORT_(\d+)__/`); `port-allocator.ts` replaces these with real port numbers and writes `.local` output files
 - **No tests:** Project has no test infrastructure — all testing is manual
