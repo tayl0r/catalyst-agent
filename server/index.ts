@@ -6,7 +6,8 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
 import type { DevServerStatus, ResultData, ServerMessage, UIMessage } from "@shared/types.js";
-import { isClientMessage, slugify } from "@shared/types.js";
+import { isClientMessage } from "@shared/types.js";
+import { slugify } from "@shared/utils.js";
 import dotenv from "dotenv";
 import express from "express";
 import { WebSocket, WebSocketServer } from "ws";
@@ -28,14 +29,13 @@ import {
   deleteConversation as deleteConv,
   getConversation,
   getProjectSlugs,
-  isValidConversationId,
   loadConversations,
   loadMessages,
   setDevServerStatus,
   setWorktreeCwd,
   touchConversation,
 } from "./store.js";
-import { stripNullValues } from "./utils.js";
+import { isValidId, stripNullValues } from "./utils.js";
 
 const execFileAsync = promisify(execFile);
 
@@ -123,6 +123,25 @@ function getServerStatus(conversationId: string): DevServerStatus {
   return conv?.devServerStatus ?? "stopped";
 }
 
+// Send SIGTERM, then SIGKILL after timeout. `group` kills the process group (for detached processes).
+function killWithTimeout(
+  proc: ChildProcess,
+  opts: { group?: boolean; timeoutMs?: number } = {},
+): ReturnType<typeof setTimeout> {
+  const { group = false, timeoutMs = 3000 } = opts;
+  const pid = proc.pid;
+  const send = (sig: NodeJS.Signals) => {
+    try {
+      if (group && pid) process.kill(-pid, sig);
+      else proc.kill(sig);
+    } catch {
+      // ESRCH — process already gone
+    }
+  };
+  send("SIGTERM");
+  return setTimeout(() => send("SIGKILL"), timeoutMs);
+}
+
 function killServerProcess(conversationId: string): void {
   const entry = serverProcesses.get(conversationId);
   if (!entry) return;
@@ -131,28 +150,16 @@ function killServerProcess(conversationId: string): void {
 
   broadcastServerStatus(conversationId, "stopping");
 
-  const pid = proc.pid;
-  if (pid) {
-    try {
-      process.kill(-pid, "SIGTERM");
-    } catch {
-      // ESRCH — process already gone
-    }
-    const timeout = setTimeout(() => {
-      try {
-        process.kill(-pid, "SIGKILL");
-      } catch {
-        // already gone
-      }
-      // Fallback cleanup if close event never fires
-      setTimeout(() => {
-        if (serverProcesses.has(conversationId)) {
-          serverProcesses.delete(conversationId);
-          broadcastServerStatus(conversationId, "stopped");
-        }
-      }, 2000);
-    }, 3000);
+  if (proc.pid) {
+    const timeout = killWithTimeout(proc, { group: true });
     serverProcesses.set(conversationId, { process: proc, killTimeout: timeout });
+    // Fallback cleanup if close event never fires
+    setTimeout(() => {
+      if (serverProcesses.has(conversationId)) {
+        serverProcesses.delete(conversationId);
+        broadcastServerStatus(conversationId, "stopped");
+      }
+    }, 5000);
   } else {
     serverProcesses.delete(conversationId);
     broadcastServerStatus(conversationId, "stopped");
@@ -162,21 +169,9 @@ function killServerProcess(conversationId: string): void {
 function killCLIProcess(conversationId: string): void {
   const entry = cliProcesses.get(conversationId);
   if (!entry) return;
-  const proc = entry.process;
   if (entry.killTimeout) clearTimeout(entry.killTimeout);
   cliProcesses.delete(conversationId);
-  try {
-    proc.kill("SIGTERM");
-  } catch {
-    return;
-  }
-  setTimeout(() => {
-    try {
-      proc.kill("SIGKILL");
-    } catch {
-      // process already exited
-    }
-  }, 3000);
+  killWithTimeout(entry.process);
 }
 
 async function removeWorktree(
@@ -374,7 +369,7 @@ wss.on("connection", (ws: WebSocket) => {
     }
 
     if (parsed.type === "delete_conversation") {
-      if (!isValidConversationId(parsed.conversationId)) {
+      if (!isValidId(parsed.conversationId)) {
         send({ type: "error", data: "Invalid conversation ID" });
         return;
       }
@@ -405,7 +400,7 @@ wss.on("connection", (ws: WebSocket) => {
     }
 
     if (parsed.type === "cleanup_conversation") {
-      if (!isValidConversationId(parsed.conversationId)) {
+      if (!isValidId(parsed.conversationId)) {
         send({ type: "error", data: "Invalid conversation ID" });
         return;
       }
@@ -482,7 +477,7 @@ wss.on("connection", (ws: WebSocket) => {
       serverProcesses.set(sConvId, { process: serverChild, killTimeout: null });
       console.log(`SERVER: [start] pid=${serverChild.pid} session=${sConvId} script=${scriptPath}`);
       let firstOutput = true;
-      serverChild.stdout?.on("data", (chunk: Buffer) => {
+      const pipeServerOutput = (stream: "stdout" | "stderr") => (chunk: Buffer) => {
         if (firstOutput) {
           firstOutput = false;
           broadcastServerStatus(sConvId, "running");
@@ -491,21 +486,11 @@ wss.on("connection", (ws: WebSocket) => {
           type: "server_output",
           conversationId: sConvId,
           data: chunk.toString(),
-          stream: "stdout",
+          stream,
         });
-      });
-      serverChild.stderr?.on("data", (chunk: Buffer) => {
-        if (firstOutput) {
-          firstOutput = false;
-          broadcastServerStatus(sConvId, "running");
-        }
-        sendToConversation(sConvId, {
-          type: "server_output",
-          conversationId: sConvId,
-          data: chunk.toString(),
-          stream: "stderr",
-        });
-      });
+      };
+      serverChild.stdout?.on("data", pipeServerOutput("stdout"));
+      serverChild.stderr?.on("data", pipeServerOutput("stderr"));
       serverChild.on("close", (code) => {
         console.log(`SERVER: [exit] pid=${serverChild.pid} exitCode=${code} session=${sConvId}`);
         const entry = serverProcesses.get(sConvId);
@@ -598,7 +583,7 @@ wss.on("connection", (ws: WebSocket) => {
 
     if (parsed.type === "start") {
       pendingGitPull = null;
-      if (!isValidConversationId(parsed.conversationId)) {
+      if (!isValidId(parsed.conversationId)) {
         send({ type: "error", data: "Invalid conversation ID" });
         return;
       }
@@ -965,7 +950,8 @@ function handleNdjsonEvent(
   }
 
   // Store non-delta events (null-stripped) for persistence
-  ctx.rawEvents.push(stripNullValues(event) as Record<string, unknown>);
+  const stripped = stripNullValues(event) as Record<string, unknown>;
+  ctx.rawEvents.push(stripped);
 
   if (event.type === "assistant") {
     // Extract text from the assistant message's content array, but only if
@@ -988,7 +974,7 @@ function handleNdjsonEvent(
         }
       }
     }
-    sendFn({ type: "assistant", data: stripNullValues(event) as Record<string, unknown> });
+    sendFn({ type: "assistant", data: stripped });
     return;
   }
 

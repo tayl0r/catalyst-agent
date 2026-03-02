@@ -35,14 +35,16 @@ function stripNulls(obj: unknown): unknown {
 
 /**
  * Events to drop entirely (not displayed in the UI).
+ * Keyed as "type" or "type:subtype" for O(1) lookup.
+ * Entries without a colon only match events that have no subtype.
  */
-const IGNORED_EVENTS: readonly { type: string; subtype?: string }[] = [
-  { type: "system", subtype: "hook_started" },
-  { type: "system", subtype: "hook_response" },
-  { type: "system", subtype: "init" },
-  { type: "rate_limit_event" },
-  { type: "content_block_delta" },
-];
+const IGNORED_EVENTS = new Set([
+  "system:hook_started",
+  "system:hook_response",
+  "system:init",
+  "rate_limit_event",
+  "content_block_delta",
+]);
 
 /**
  * Top-level keys to remove from ALL events.
@@ -69,11 +71,8 @@ const CONTENT_BLOCK_DENY = new Set(["signature"]);
  */
 export function filterEvent(raw: Record<string, unknown>): Record<string, unknown> | null {
   // Drop ignored events
-  for (const ignored of IGNORED_EVENTS) {
-    if (raw.type === ignored.type && (!ignored.subtype || raw.subtype === ignored.subtype)) {
-      return null;
-    }
-  }
+  const eventKey = raw.subtype ? `${raw.type}:${raw.subtype}` : (raw.type as string);
+  if (IGNORED_EVENTS.has(eventKey)) return null;
 
   // Strip global deny-listed keys from all events
   const filtered: Record<string, unknown> = {};

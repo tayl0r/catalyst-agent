@@ -1,3 +1,5 @@
+import ModalOverlay from "./ModalOverlay";
+
 interface SetupProjectDialogProps {
   isOpen: boolean;
   onClose: () => void;
@@ -9,21 +11,8 @@ export default function SetupProjectDialog({
   onClose,
   onConfirm,
 }: SetupProjectDialogProps) {
-  if (!isOpen) return null;
-
   return (
-    <div
-      className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center"
-      onClick={(e) => {
-        if (e.target === e.currentTarget) onClose();
-      }}
-      onKeyDown={(e) => {
-        if (e.key === "Escape") onClose();
-      }}
-      role="dialog"
-      aria-modal="true"
-      aria-labelledby="setup-project-title"
-    >
+    <ModalOverlay isOpen={isOpen} onClose={onClose} labelledBy="setup-project-title">
       <div className="bg-gray-900 rounded-xl p-6 max-w-md w-full mx-4 border border-gray-700">
         <h2 id="setup-project-title" className="text-lg font-semibold text-gray-100 mb-4">
           Setup Project
@@ -50,6 +39,6 @@ export default function SetupProjectDialog({
           </button>
         </div>
       </div>
-    </div>
+    </ModalOverlay>
   );
 }

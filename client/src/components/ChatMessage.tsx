@@ -1,4 +1,5 @@
 import type { UIMessage } from "@shared/types";
+import { memo } from "react";
 import EventRenderer from "./events/EventRenderer";
 import TextBlock from "./events/TextBlock";
 import StreamingIndicator from "./StreamingIndicator";
@@ -8,7 +9,7 @@ interface ChatMessageProps {
   onSend?: (text: string) => void;
 }
 
-export default function ChatMessage({ message, onSend }: ChatMessageProps) {
+export default memo(function ChatMessage({ message, onSend }: ChatMessageProps) {
   if (message.type === "user") {
     return (
       <div className="flex justify-end">
@@ -57,4 +58,4 @@ export default function ChatMessage({ message, onSend }: ChatMessageProps) {
   }
 
   return null;
-}
+});

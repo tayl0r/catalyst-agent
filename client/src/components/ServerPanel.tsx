@@ -1,5 +1,6 @@
 import type { DevServerStatus } from "@shared/types";
-import { type ReactNode, useEffect, useRef } from "react";
+import type { ReactNode } from "react";
+import useAutoScroll from "../hooks/useAutoScroll";
 
 const URL_RE = /(https?:\/\/[^\s)"'>]+)/;
 
@@ -39,26 +40,10 @@ const STATUS_COLORS: Record<DevServerStatus, string> = {
 };
 
 export default function ServerPanel({ logs, status, ports, onClose }: ServerPanelProps) {
-  const logEndRef = useRef<HTMLDivElement>(null);
-  const containerRef = useRef<HTMLDivElement>(null);
-  const isNearBottomRef = useRef(true);
-
-  useEffect(() => {
-    const container = containerRef.current;
-    if (!container) return;
-    const handleScroll = () => {
-      const { scrollTop, scrollHeight, clientHeight } = container;
-      isNearBottomRef.current = scrollHeight - scrollTop - clientHeight < 40;
-    };
-    container.addEventListener("scroll", handleScroll);
-    return () => container.removeEventListener("scroll", handleScroll);
-  }, []);
-
-  useEffect(() => {
-    if (isNearBottomRef.current) {
-      logEndRef.current?.scrollIntoView({ behavior: "smooth" });
-    }
-  }, [logs]);
+  const { containerRef, handleScroll } = useAutoScroll([logs], {
+    threshold: 40,
+    behavior: "smooth",
+  });
 
   return (
     <div className="flex w-96 shrink-0 flex-col border-l border-gray-800 bg-gray-900">
@@ -105,7 +90,8 @@ export default function ServerPanel({ logs, status, ports, onClose }: ServerPane
 
       {/* Log area */}
       <div
-        ref={containerRef}
+        ref={containerRef as React.RefObject<HTMLDivElement>}
+        onScroll={handleScroll}
         className="flex-1 overflow-y-auto bg-gray-950 p-3 font-mono text-xs leading-relaxed"
       >
         {logs.length === 0 ? (
@@ -118,7 +104,7 @@ export default function ServerPanel({ logs, status, ports, onClose }: ServerPane
             </span>
           ))
         )}
-        <div ref={logEndRef} />
+        <div />
       </div>
     </div>
   );

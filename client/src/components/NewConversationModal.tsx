@@ -1,6 +1,7 @@
 import type { Project } from "@shared/types";
-import { slugify } from "@shared/types";
+import { slugify } from "@shared/utils";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import ModalOverlay from "./ModalOverlay";
 
 interface NewConversationModalProps {
   isOpen: boolean;
@@ -119,21 +120,8 @@ export default function NewConversationModal({
     }
   };
 
-  if (!isOpen) return null;
-
   return (
-    <div
-      className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center"
-      onClick={(e) => {
-        if (e.target === e.currentTarget) onClose();
-      }}
-      onKeyDown={(e) => {
-        if (e.key === "Escape") onClose();
-      }}
-      role="dialog"
-      aria-modal="true"
-      aria-labelledby="new-conversation-title"
-    >
+    <ModalOverlay isOpen={isOpen} onClose={onClose} labelledBy="new-conversation-title">
       <form
         className="bg-gray-900 rounded-xl p-6 max-w-md w-full mx-4 border border-gray-700"
         onSubmit={(e) => {
@@ -247,6 +235,6 @@ export default function NewConversationModal({
           </button>
         </div>
       </form>
-    </div>
+    </ModalOverlay>
   );
 }
