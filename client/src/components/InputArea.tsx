@@ -8,6 +8,7 @@ interface InputAreaProps {
   syncStatus: "idle" | "syncing" | "done" | "error";
   pendingText?: { text: string; key: number } | null;
   onPendingTextConsumed?: () => void;
+  inputTextRef?: React.MutableRefObject<string>;
 }
 
 export default function InputArea({
@@ -18,6 +19,7 @@ export default function InputArea({
   syncStatus,
   pendingText,
   onPendingTextConsumed,
+  inputTextRef,
 }: InputAreaProps) {
   const [text, setText] = useState("");
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
@@ -28,6 +30,7 @@ export default function InputArea({
   useEffect(() => {
     if (pendingText) {
       setText(pendingText.text);
+      if (inputTextRef) inputTextRef.current = pendingText.text;
       onPendingTextConsumedRef.current?.();
     }
   }, [pendingText]);
@@ -44,6 +47,7 @@ export default function InputArea({
     if (!trimmed || disabled) return;
     onSend(trimmed);
     setText("");
+    if (inputTextRef) inputTextRef.current = "";
   };
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
@@ -60,7 +64,10 @@ export default function InputArea({
         <textarea
           ref={textareaRef}
           value={text}
-          onChange={(e) => setText(e.target.value)}
+          onChange={(e) => {
+            setText(e.target.value);
+            if (inputTextRef) inputTextRef.current = e.target.value;
+          }}
           onKeyDown={handleKeyDown}
           placeholder="Send a message..."
           disabled={disabled}
