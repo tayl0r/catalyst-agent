@@ -3,6 +3,8 @@
 # Kills any previous dev server, writes PID file, runs server+client,
 # and cleans up on exit.
 
+set -m  # job control: makes this shell a process group leader
+
 PIDFILE=".dev.pid"
 
 # Kill previous instance if running
@@ -11,7 +13,11 @@ if [ -f "$PIDFILE" ]; then
   if kill -0 "$OLD_PID" 2>/dev/null; then
     echo "Killing previous dev server (PID $OLD_PID)..."
     kill -- -"$OLD_PID" 2>/dev/null
-    sleep 1
+    # Wait for process to actually exit (up to 5s)
+    for i in $(seq 1 10); do
+      kill -0 "$OLD_PID" 2>/dev/null || break
+      sleep 0.5
+    done
   fi
   rm -f "$PIDFILE"
 fi
@@ -22,7 +28,8 @@ echo $$ > "$PIDFILE"
 # Clean up on exit
 cleanup() {
   rm -f "$PIDFILE"
-  kill 0 2>/dev/null  # kill all processes in our group
+  # Kill all processes in our group (the backgrounded npm processes)
+  kill -- -$$ 2>/dev/null
 }
 trap cleanup EXIT INT TERM
 
