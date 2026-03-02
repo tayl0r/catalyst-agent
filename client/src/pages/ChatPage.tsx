@@ -98,6 +98,13 @@ export default function ChatPage() {
     setShowSetupDialog(false);
   }, [currentConversation?.id]);
 
+  // Auto-open server panel when server starts
+  useEffect(() => {
+    if (serverStatus === "starting" || serverStatus === "running") {
+      setShowServerPanel(true);
+    }
+  }, [serverStatus]);
+
   // Open modal with pre-selected project when navigated from ProjectsPage
   useEffect(() => {
     const state = location.state as { newConversationProjectId?: string } | null;
@@ -137,12 +144,12 @@ export default function ChatPage() {
         <header className="flex items-center justify-between border-b border-gray-800 px-4 py-3">
           <div className="min-w-0 flex-1">
             <h1 className="text-lg font-semibold text-gray-100 truncate">
-              {currentConversation?.name ?? "New conversation"}
               {currentConversation?.archived && (
-                <span className="ml-2 rounded bg-gray-700 px-1.5 py-0.5 text-xs font-normal text-gray-400">
+                <span className="mr-2 rounded bg-gray-700 px-1.5 py-0.5 text-xs font-normal text-gray-400">
                   Archived
                 </span>
               )}
+              {currentConversation?.name ?? "New conversation"}
             </h1>
             {currentConversation && (
               <div className="flex items-center gap-2 text-xs text-gray-500 truncate">

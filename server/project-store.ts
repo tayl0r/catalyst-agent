@@ -111,16 +111,21 @@ function scaffoldProject(projectPath: string): void {
     // 2. .gitignore (only if git repo exists, create or append)
     if (hasGit) {
       const gitignorePath = path.join(projectPath, ".gitignore");
-      const localEntries = "start.local.sh\nPORTS.LOCAL\n";
+      // Each entry: [value to write, substring to check for dedup]
+      const catalystEntries: [string, string][] = [
+        ["start.local.sh", "start.local.sh"],
+        ["PORTS.LOCAL", "PORTS.LOCAL"],
+        [".claude/worktrees/", ".claude/worktrees"],
+      ];
       if (!fs.existsSync(gitignorePath)) {
-        atomicWrite(
-          gitignorePath,
-          `node_modules/\n.env\n.env.local\n.DS_Store\n*.log\n${localEntries}`,
-        );
+        const defaults = "node_modules/\n.env\n.env.local\n.DS_Store\n*.log\n";
+        atomicWrite(gitignorePath, `${defaults}${catalystEntries.map(([v]) => v).join("\n")}\n`);
       } else {
         const existing = fs.readFileSync(gitignorePath, "utf8");
-        if (!existing.includes("start.local.sh")) {
-          atomicWrite(gitignorePath, `${existing.trimEnd()}\n${localEntries}`);
+        const missing = catalystEntries.filter(([, check]) => !existing.includes(check));
+        if (missing.length > 0) {
+          const suffix = missing.map(([v]) => v).join("\n");
+          atomicWrite(gitignorePath, `${existing.trimEnd()}\n${suffix}\n`);
         }
       }
     }
