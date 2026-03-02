@@ -4,8 +4,10 @@ import ChatMessage from "../components/ChatMessage";
 import InputArea from "../components/InputArea";
 import NewConversationModal from "../components/NewConversationModal";
 import ServerPanel from "../components/ServerPanel";
+import SetupProjectDialog from "../components/SetupProjectDialog";
 import Sidebar from "../components/Sidebar";
 import StatusIndicator from "../components/StatusIndicator";
+import { SETUP_PROMPT } from "../constants";
 import useProjects from "../hooks/useProjects";
 import useWebSocket from "../hooks/useWebSocket";
 
@@ -40,6 +42,8 @@ export default function ChatPage() {
   const [filterProjectId, setFilterProjectId] = useState<string | null>(null);
   const [showNewModal, setShowNewModal] = useState(false);
   const [showServerPanel, setShowServerPanel] = useState(false);
+  const [showSetupDialog, setShowSetupDialog] = useState(false);
+  const [pendingText, setPendingText] = useState<{ text: string; key: number } | null>(null);
   const [initialProjectId, setInitialProjectId] = useState<string | null>(null);
   const messagesEndRef = useRef<HTMLDivElement | null>(null);
   const scrollContainerRef = useRef<HTMLElement | null>(null);
@@ -230,6 +234,33 @@ export default function ChatPage() {
                 </button>
               </>
             )}
+            {!serverPorts &&
+              !isProcessing &&
+              currentConversation?.worktreeCwd &&
+              !currentConversation.archived && (
+                <button
+                  type="button"
+                  onClick={() => setShowSetupDialog(true)}
+                  className="flex items-center gap-1 rounded px-2 py-1 text-xs text-blue-400 hover:bg-gray-800 transition-colors"
+                  title="Set up project for Catalyst Agent"
+                >
+                  <svg
+                    className="h-3.5 w-3.5"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth={2}
+                    viewBox="0 0 24 24"
+                    aria-hidden="true"
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      d="M11.42 15.17 17.25 21A2.652 2.652 0 0 0 21 17.25l-5.877-5.877M11.42 15.17l2.496-3.03c.317-.384.74-.626 1.208-.766M11.42 15.17l-4.655 5.653a2.548 2.548 0 1 1-3.586-3.586l6.837-5.63m5.108-.233c.55-.164 1.163-.188 1.743-.14a4.5 4.5 0 0 0 4.486-6.336l-3.276 3.277a3.004 3.004 0 0 1-2.25-2.25l3.276-3.276a4.5 4.5 0 0 0-6.336 4.486c.091 1.076-.071 2.264-.904 2.95l-.102.085"
+                    />
+                  </svg>
+                  Setup
+                </button>
+              )}
             <StatusIndicator status={status} />
           </div>
         </header>
@@ -266,6 +297,8 @@ export default function ChatPage() {
                 status !== "connected" || !currentConversation || !!currentConversation.archived
               }
               syncStatus={syncStatus}
+              pendingText={pendingText}
+              onPendingTextConsumed={() => setPendingText(null)}
             />
           </div>
 
@@ -286,6 +319,15 @@ export default function ChatPage() {
         onSubmit={handleModalSubmit}
         projects={projects}
         initialProjectId={initialProjectId}
+      />
+
+      <SetupProjectDialog
+        isOpen={showSetupDialog}
+        onClose={() => setShowSetupDialog(false)}
+        onConfirm={() => {
+          setPendingText({ text: SETUP_PROMPT, key: Date.now() });
+          setShowSetupDialog(false);
+        }}
       />
     </div>
   );

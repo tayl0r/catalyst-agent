@@ -907,6 +907,31 @@ wss.on("connection", (ws: WebSocket) => {
         touchConversation(convId);
         broadcastConversationList();
       }
+
+      // Re-try port allocation if worktree exists but no ports
+      // (e.g. setup prompt just created start.sh + PORTS.md)
+      if (isActive && convId) {
+        const doneConv = getConversation(convId);
+        if (
+          doneConv?.worktreeCwd &&
+          (!doneConv.ports || Object.keys(doneConv.ports).length === 0)
+        ) {
+          allocatePorts(convId, doneConv.worktreeCwd)
+            .then((ports) => {
+              if (Object.keys(ports).length > 0) {
+                console.log(
+                  `PORTS: [retry-allocated] session=${convId} ports=${JSON.stringify(ports)}`,
+                );
+                broadcastServerStatus(convId, "stopped", ports);
+              }
+            })
+            .catch((err) => {
+              console.error(
+                `PORTS: [retry-error] session=${convId} error=${(err as Error).message}`,
+              );
+            });
+        }
+      }
     });
   });
 
