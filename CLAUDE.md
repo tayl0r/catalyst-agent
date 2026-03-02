@@ -18,6 +18,8 @@ Lint: `npm run lint` (check) / `npm run lint:fix` (auto-fix) / `npm run format` 
 
 Client build: `cd client && npm run build`
 
+Test: `npx vitest run` (once) / `npx vitest` (watch) / `npx vitest --coverage` (with coverage)
+
 ## Architecture
 
 Three-tier: React client → WebSocket → Node server → spawned Claude CLI process.
@@ -43,6 +45,7 @@ server/          # Express + ws library (TypeScript, ES modules, runs via tsx)
     conversations/<uuid>.json
     messages/<uuid>.json
     projects.json
+tests/           # Vitest unit tests (store, ndjson, filter-event, server-utils, port-allocator, etc.)
 ```
 
 ### Session Management
@@ -55,6 +58,7 @@ Each conversation gets a UUID. The Claude CLI is invoked with `--session-id <uui
 - **Client:** React 19, Vite 6, Tailwind CSS 3, react-markdown + remark-gfm
 - **Server:** Node.js, Express 4, ws (WebSocket), tsx (runtime, no build step), JSON file storage (no external DB)
 - **Root:** npm scripts with PID-tracked dev server (`.dev.pid`), auto-restart on `npm run dev`, explicit stop via `npm run dev:stop`
+- **Testing:** Vitest 4, @vitest/coverage-v8, config at root `vitest.config.ts`
 
 ## Pre-commit
 
@@ -80,7 +84,6 @@ Always run `npm run lint:fix` before committing to ensure code passes linting an
 - **Process kill flow:** SIGTERM first, then SIGKILL after 3s timeout if process doesn't exit
 - **Vite is transpile-only:** Vite does not run `tsc` — type errors won't fail the dev server or build. Run `npm run typecheck` separately
 - **Port template variables:** Projects can include `start.sh` and `PORTS` with `__PORT_1__`, `__PORT_2__`, etc. as template variables (regex `/__PORT_(\d+)__/`); `port-allocator.ts` replaces these with real port numbers and writes `.local` output files. Lines starting with `#` are treated as comments and skipped during scanning/replacement.
-- **No tests:** Project has no test infrastructure — all testing is manual
 
 
 # Dev Server Ports
