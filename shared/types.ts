@@ -176,6 +176,12 @@ export interface ServerStatusMessage {
   ports?: Record<string, number>;
 }
 
+export interface SyncStatusMessage {
+  type: "sync_status";
+  status: "syncing" | "done" | "error";
+  error?: string;
+}
+
 export type ServerMessage =
   | TextMessage
   | AssistantMessage
@@ -189,7 +195,8 @@ export type ServerMessage =
   | ConversationDeletedMessage
   | MessagesMessage
   | ServerOutputMessage
-  | ServerStatusMessage;
+  | ServerStatusMessage
+  | SyncStatusMessage;
 
 // --- Client-side UI message types (different from wire types) ---
 
@@ -270,6 +277,7 @@ const SERVER_MESSAGE_TYPES: ReadonlySet<string> = new Set([
   "messages",
   "server_output",
   "server_status",
+  "sync_status",
 ]);
 
 export function isServerMessage(msg: unknown): msg is ServerMessage {

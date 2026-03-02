@@ -27,6 +27,7 @@ interface UseWebSocketReturn {
   serverStatus: DevServerStatus;
   serverLogs: string[];
   serverPorts: Record<string, number> | null;
+  syncStatus: "idle" | "syncing" | "done" | "error";
   sendPrompt: (text: string) => void;
   killProcess: () => void;
   createConversation: (name: string, projectId: string) => void;
@@ -45,6 +46,7 @@ export default function useWebSocket(): UseWebSocketReturn {
   const [serverStatus, setServerStatus] = useState<DevServerStatus>("stopped");
   const [serverLogs, setServerLogs] = useState<string[]>([]);
   const [serverPorts, setServerPorts] = useState<Record<string, number> | null>(null);
+  const [syncStatus, setSyncStatus] = useState<"idle" | "syncing" | "done" | "error">("idle");
 
   const wsRef = useRef<WebSocket | null>(null);
   const reconnectDelay = useRef(RECONNECT_MIN);
@@ -254,6 +256,18 @@ export default function useWebSocket(): UseWebSocketReturn {
           if (msg.ports) setServerPorts(msg.ports);
           break;
 
+        case "sync_status":
+          setSyncStatus(
+            msg.status === "syncing" ? "syncing" : msg.status === "done" ? "done" : "error",
+          );
+          if (msg.status === "error" && msg.error) {
+            setMessages((prev) => [
+              ...prev,
+              { id: createId(), type: "error", content: `Git pull failed: ${msg.error}` },
+            ]);
+          }
+          break;
+
         default:
           break;
       }
@@ -263,6 +277,7 @@ export default function useWebSocket(): UseWebSocketReturn {
       if (!mountedRef.current) return;
       setStatus("disconnected");
       setIsProcessing(false);
+      setSyncStatus("idle");
 
       // Auto-reconnect with exponential backoff
       reconnectTimer.current = setTimeout(() => {
@@ -332,6 +347,7 @@ export default function useWebSocket(): UseWebSocketReturn {
       logBufferRef.current = [];
       setServerLogs([]);
       setServerPorts(null);
+      setSyncStatus("idle");
     },
     [wsSend],
   );
@@ -386,6 +402,7 @@ export default function useWebSocket(): UseWebSocketReturn {
     serverStatus,
     serverLogs,
     serverPorts,
+    syncStatus,
     sendPrompt,
     killProcess,
     createConversation,
