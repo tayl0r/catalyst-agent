@@ -19,6 +19,7 @@ export default function ChatPage() {
     serverStatus,
     serverLogs,
     serverPorts,
+    syncStatus,
     sendPrompt,
     killProcess,
     createConversation,
@@ -264,6 +265,7 @@ export default function ChatPage() {
               disabled={
                 status !== "connected" || !currentConversation || !!currentConversation.archived
               }
+              syncStatus={syncStatus}
             />
           </div>
 
