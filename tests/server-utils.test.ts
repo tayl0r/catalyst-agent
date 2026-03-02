@@ -1,5 +1,8 @@
-import { describe, expect, it } from "vitest";
-import { isValidId, stripNullValues } from "../server/utils";
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { atomicWrite, isValidId, readJson, stripNullValues } from "../server/utils";
 
 describe("isValidId", () => {
   it("accepts valid UUIDs", () => {
@@ -34,5 +37,59 @@ describe("stripNullValues", () => {
     expect(stripNullValues(42)).toBe(42);
     expect(stripNullValues("hello")).toBe("hello");
     expect(stripNullValues(true)).toBe(true);
+  });
+});
+
+describe("atomicWrite", () => {
+  let tmpDir: string;
+
+  beforeEach(() => {
+    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "utils-test-"));
+  });
+
+  afterEach(() => {
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  });
+
+  it("writes and reads back content", () => {
+    const filePath = path.join(tmpDir, "test.json");
+    atomicWrite(filePath, '{"hello":"world"}');
+    expect(fs.readFileSync(filePath, "utf-8")).toBe('{"hello":"world"}');
+  });
+
+  it("overwrites existing file", () => {
+    const filePath = path.join(tmpDir, "test.json");
+    atomicWrite(filePath, "first");
+    atomicWrite(filePath, "second");
+    expect(fs.readFileSync(filePath, "utf-8")).toBe("second");
+  });
+});
+
+describe("readJson", () => {
+  let tmpDir: string;
+
+  beforeEach(() => {
+    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "utils-test-"));
+  });
+
+  afterEach(() => {
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  });
+
+  it("parses valid JSON", () => {
+    const filePath = path.join(tmpDir, "data.json");
+    fs.writeFileSync(filePath, '{"key":"value"}');
+    expect(readJson(filePath, null)).toEqual({ key: "value" });
+  });
+
+  it("returns fallback on missing file", () => {
+    const filePath = path.join(tmpDir, "missing.json");
+    expect(readJson(filePath, [])).toEqual([]);
+  });
+
+  it("returns fallback on corrupt file", () => {
+    const filePath = path.join(tmpDir, "bad.json");
+    fs.writeFileSync(filePath, "not valid json {{{");
+    expect(readJson(filePath, "fallback")).toBe("fallback");
   });
 });
