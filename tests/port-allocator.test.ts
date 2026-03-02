@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { processTemplate, scanPortVars } from "../server/port-allocator";
+import { pickAvailablePort, processTemplate, scanPortVars } from "../server/port-allocator";
 
 describe("scanPortVars", () => {
   it("finds __PORT_N__ variables", () => {
@@ -39,5 +39,21 @@ describe("processTemplate", () => {
       __PORT_2__: 4000,
     });
     expect(result).toBe("3000 and 4000");
+  });
+});
+
+describe("pickAvailablePort", () => {
+  it("returns a port in the 3000-5000 range", async () => {
+    const port = await pickAvailablePort(new Set());
+    expect(port).toBeGreaterThanOrEqual(3000);
+    expect(port).toBeLessThanOrEqual(5000);
+  });
+
+  it("returns different ports on subsequent calls", async () => {
+    const used = new Set<number>();
+    const port1 = await pickAvailablePort(used);
+    used.add(port1);
+    const port2 = await pickAvailablePort(used);
+    expect(port2).not.toBe(port1);
   });
 });
