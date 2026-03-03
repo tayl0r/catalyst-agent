@@ -10,8 +10,7 @@ target/
 .env.*
 !.env.example
 src-tauri/gen/
-.claude/settings.local.json
-.claude/worktrees/
+.claude/
 .worktrees/
 server/data/
 .dev.pid
